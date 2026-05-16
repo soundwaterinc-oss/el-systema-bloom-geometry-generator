@@ -41,6 +41,7 @@ const voicePresets = {
 };
 
 const visualPresets = {
+  "Uploaded Image": "uploaded",
   "Chevron Weave": "woven",
   "Dark Chevron": "dark-woven",
   "Star Lattice": "star",
@@ -75,6 +76,7 @@ const state = {
   synths: null,
   droneBed: null,
   uploadedImage: null,
+  uploadedImageUrl: null,
   scanPath: [],
   isPlaying: false,
   stepIndex: 0,
@@ -416,7 +418,7 @@ function normalizedStepValue(step, a, b) {
 }
 
 function drawGeometry(withOverlay = true) {
-  if (state.uploadedImage) {
+  if (visualPresets[elements.visualPreset.value] === "uploaded" && state.uploadedImage) {
     drawUploadedImage();
     if (withOverlay) drawScanOverlay();
     return;
@@ -500,7 +502,9 @@ function buildScanPath() {
   for (let i = 0; i < count; i += 1) {
     const t = i / (count - 1);
     if (pathType === "vertical") {
-      points.push({ x: width * (0.1 + 0.8 * ((i % 16) / 15)), y: height * (Math.floor(i / 16) / 15) });
+      const column = Math.floor(i / 16);
+      const row = i % 16;
+      points.push({ x: width * (column / 15), y: height * (row / 15) });
     } else if (pathType === "diagonal") {
       points.push({ x: width * t, y: height * t });
     } else if (pathType === "spiral") {
@@ -508,7 +512,9 @@ function buildScanPath() {
       const radius = t * Math.min(width, height) * 0.42;
       points.push({ x: width / 2 + Math.cos(angle) * radius, y: height / 2 + Math.sin(angle) * radius });
     } else {
-      points.push({ x: width * (i % 16) / 15, y: height * (Math.floor(i / 16) / 15) });
+      const row = Math.floor(i / 16);
+      const column = i % 16;
+      points.push({ x: width * (column / 15), y: height * (row / 15) });
     }
   }
 
@@ -520,11 +526,19 @@ function handleImageUpload(event) {
   if (!file) return;
   const image = new Image();
   image.onload = () => {
+    if (state.uploadedImageUrl) {
+      URL.revokeObjectURL(state.uploadedImageUrl);
+    }
     state.uploadedImage = image;
+    state.uploadedImageUrl = image.src;
+    elements.visualPreset.value = "Uploaded Image";
     rebuildPattern();
-    URL.revokeObjectURL(image.src);
+  };
+  image.onerror = () => {
+    state.uploadedImage = null;
   };
   image.src = URL.createObjectURL(file);
+  elements.imageInput.value = "";
 }
 
 function drawWovenGeometry(inverted = false) {
