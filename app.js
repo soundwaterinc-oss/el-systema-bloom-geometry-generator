@@ -54,12 +54,16 @@ const functionPresets = {
 
 const state = {
   audioContext: null,
-  synth: null,
+  synths: null,
   isPlaying: false,
   stepIndex: 0,
   nextStepTime: 0,
   schedulerId: null,
-  currentPattern: [],
+  layerPatterns: {
+    bass: [],
+    drone: [],
+    percussion: [],
+  },
   geometrySeeds: {
     lanes: 8,
     spacing: 24,
@@ -80,7 +84,6 @@ const elements = {
   bpm: document.querySelector("#bpm"),
   bpmValue: document.querySelector("#bpmValue"),
   rhythmPreset: document.querySelector("#rhythmPreset"),
-  voicePreset: document.querySelector("#voicePreset"),
   scalePreset: document.querySelector("#scalePreset"),
   functionPreset: document.querySelector("#functionPreset"),
   visualPreset: document.querySelector("#visualPreset"),
@@ -94,6 +97,15 @@ const elements = {
   accentValue: document.querySelector("#accentValue"),
   slide: document.querySelector("#slide"),
   slideValue: document.querySelector("#slideValue"),
+  bassVoice: document.querySelector("#bassVoice"),
+  droneVoice: document.querySelector("#droneVoice"),
+  percussionVoice: document.querySelector("#percussionVoice"),
+  bassLevel: document.querySelector("#bassLevel"),
+  bassLevelValue: document.querySelector("#bassLevelValue"),
+  droneLevel: document.querySelector("#droneLevel"),
+  droneLevelValue: document.querySelector("#droneLevelValue"),
+  percussionLevel: document.querySelector("#percussionLevel"),
+  percussionLevelValue: document.querySelector("#percussionLevelValue"),
   densityValue: document.querySelector("#densityValue"),
   edgeDensityValue: document.querySelector("#edgeDensityValue"),
   complexityValue: document.querySelector("#complexityValue"),
@@ -105,10 +117,12 @@ const ctx2d = elements.canvas.getContext("2d");
 
 function populatePresets() {
   fillSelect(elements.rhythmPreset, Object.keys(rhythmPresets), "Kecak Cycle");
-  fillSelect(elements.voicePreset, Object.keys(voicePresets), "Acid Bass");
   fillSelect(elements.scalePreset, Object.keys(scalePresets), "Japanese In");
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
   fillSelect(elements.visualPreset, Object.keys(visualPresets), "Chevron Weave");
+  fillSelect(elements.bassVoice, ["Acid Bass", "Prophet", "Pipe Organ", "Sine Pure"], "Acid Bass");
+  fillSelect(elements.droneVoice, ["Pipe Organ", "Fender Rhodes", "Sine Bell", "Voice"], "Pipe Organ");
+  fillSelect(elements.percussionVoice, ["Kecak", "Noise", "Voice", "Sine FM"], "Kecak");
 }
 
 function fillSelect(select, items, initial) {
@@ -129,11 +143,11 @@ function bindControls() {
     rebuildPattern();
   });
 
-  ["bpm", "cutoff", "resonance", "decay", "accent", "slide"].forEach((id) => {
+  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "bassLevel", "droneLevel", "percussionLevel"].forEach((id) => {
     elements[id].addEventListener("input", syncLabels);
   });
 
-  ["rhythmPreset", "voicePreset", "scalePreset", "functionPreset", "visualPreset"].forEach((id) => {
+  ["rhythmPreset", "bassVoice", "droneVoice", "percussionVoice", "scalePreset", "functionPreset", "visualPreset"].forEach((id) => {
     elements[id].addEventListener("change", rebuildPattern);
   });
 }
@@ -145,12 +159,19 @@ function syncLabels() {
   elements.decayValue.textContent = Number(elements.decay.value).toFixed(2);
   elements.accentValue.textContent = Number(elements.accent.value).toFixed(2);
   elements.slideValue.textContent = Number(elements.slide.value).toFixed(2);
+  elements.bassLevelValue.textContent = Number(elements.bassLevel.value).toFixed(2);
+  elements.droneLevelValue.textContent = Number(elements.droneLevel.value).toFixed(2);
+  elements.percussionLevelValue.textContent = Number(elements.percussionLevel.value).toFixed(2);
 }
 
 async function startAudio() {
   if (!state.audioContext) {
     state.audioContext = new AudioContext();
-    state.synth = createVoiceEngine(state.audioContext);
+    state.synths = {
+      bass: createVoiceEngine(state.audioContext),
+      drone: createVoiceEngine(state.audioContext),
+      percussion: createVoiceEngine(state.audioContext),
+    };
   }
 
   if (state.audioContext.state !== "running") {
@@ -182,10 +203,9 @@ async function toggleTransport() {
 function schedule() {
   const lookAhead = 0.12;
   while (state.nextStepTime < state.audioContext.currentTime + lookAhead) {
-    const step = state.currentPattern[state.stepIndex];
-    if (step && step.active) {
-      state.synth.play(step, state.nextStepTime, getSynthControls());
-    }
+    playLayerStep("bass", state.nextStepTime);
+    playLayerStep("drone", state.nextStepTime);
+    playLayerStep("percussion", state.nextStepTime);
     renderSteps(state.stepIndex);
     state.nextStepTime += getStepDuration();
     state.stepIndex = (state.stepIndex + 1) % STEPS;
@@ -207,15 +227,30 @@ function getSynthControls() {
   };
 }
 
+function playLayerStep(layer, time) {
+  const step = state.layerPatterns[layer][state.stepIndex];
+  if (step && step.active) {
+    state.synths[layer].play(step, time, getSynthControls());
+  }
+}
+
 function rebuildPattern() {
   drawGeometry();
   state.features = extractFeatures();
-  state.currentPattern = buildPattern();
+  state.layerPatterns = buildLayerPatterns();
   syncFeatureLabels();
   renderSteps();
 }
 
-function buildPattern() {
+function buildLayerPatterns() {
+  return {
+    bass: buildBassPattern(),
+    drone: buildDronePattern(),
+    percussion: buildPercussionPattern(),
+  };
+}
+
+function buildBassPattern() {
   const rhythm = rhythmPresets[elements.rhythmPreset.value];
   const scale = scalePresets[elements.scalePreset.value];
   const fn = functionPresets[elements.functionPreset.value];
@@ -238,7 +273,49 @@ function buildPattern() {
       slide,
       cutoff: Number(elements.cutoff.value) + cutoffMod,
       note: ROOT_MIDI + scaleNote + octaveOffset,
-      voice: elements.voicePreset.value,
+      voice: elements.bassVoice.value,
+      level: Number(elements.bassLevel.value),
+    };
+  });
+}
+
+function buildDronePattern() {
+  const scale = scalePresets[elements.scalePreset.value];
+  const root = ROOT_MIDI + 12 + scale[0];
+  const fifth = ROOT_MIDI + 12 + (scale[Math.min(3, scale.length - 1)] ?? 7);
+  const { density, complexity } = state.features;
+
+  return Array.from({ length: STEPS }, (_, step) => {
+    const trigger = step % 8 === 0 || (complexity > 0.2 && step === 12);
+    return {
+      active: trigger,
+      accent: false,
+      slide: density > 0.45,
+      cutoff: Number(elements.cutoff.value) * 0.72,
+      note: step % 16 === 0 ? root : fifth,
+      voice: elements.droneVoice.value,
+      level: Number(elements.droneLevel.value),
+      durationScale: 8,
+    };
+  });
+}
+
+function buildPercussionPattern() {
+  const rhythm = rhythmPresets[elements.rhythmPreset.value];
+  const { edgeDensity, complexity } = state.features;
+
+  return Array.from({ length: STEPS }, (_, step) => {
+    const extraHit = complexity > 0.2 && [3, 7, 11, 15].includes(step);
+    const active = rhythm[step] === 1 || extraHit;
+    return {
+      active,
+      accent: active && (step % 4 === 0 || edgeDensity > 0.1),
+      slide: false,
+      cutoff: Number(elements.cutoff.value) * 1.18,
+      note: ROOT_MIDI + 24 + ((step % 3) * 2),
+      voice: elements.percussionVoice.value,
+      level: Number(elements.percussionLevel.value),
+      durationScale: 0.55,
     };
   });
 }
@@ -511,21 +588,33 @@ function syncFeatureLabels() {
 
 function renderSteps(currentStep = -1) {
   elements.stepGrid.innerHTML = "";
+  [
+    ["bass", "Bass"],
+    ["drone", "Drone"],
+    ["percussion", "Vocal Percussion"],
+  ].forEach(([key, label]) => {
+    const row = document.createElement("section");
+    row.className = "layer-row";
+    row.innerHTML = `<div class="layer-row-header"><strong>${label}</strong><span>${state.layerPatterns[key][0]?.voice ?? ""}</span></div>`;
+    const grid = document.createElement("div");
+    grid.className = "step-grid";
 
-  state.currentPattern.forEach((step, index) => {
-    const item = document.createElement("div");
-    item.className = "step";
-    if (!step.active) item.classList.add("is-rest");
-    if (step.accent) item.classList.add("is-accent");
-    if (step.slide) item.classList.add("is-slide");
-    if (index === currentStep) item.classList.add("is-current");
-
-    item.innerHTML = `
-      <small>Step ${index + 1}</small>
-      <strong>${step.active ? midiToNote(step.note) : "Rest"}</strong>
-      <small>${step.active ? `${step.accent ? "Accent " : ""}${step.slide ? "Slide " : ""}Cut ${Math.round(step.cutoff)}` : "Muted"}</small>
-    `;
-    elements.stepGrid.appendChild(item);
+    state.layerPatterns[key].forEach((step, index) => {
+      const item = document.createElement("div");
+      item.className = "step";
+      if (!step.active) item.classList.add("is-rest");
+      if (step.accent) item.classList.add("is-accent");
+      if (step.slide) item.classList.add("is-slide");
+      if (index === currentStep) item.classList.add("is-current");
+      item.innerHTML = `
+        <small>${index + 1}</small>
+        <strong>${step.active ? midiToNote(step.note) : "Rest"}</strong>
+        <small>${step.active ? `${step.accent ? "Accent " : ""}${step.slide ? "Slide " : ""}` : "Muted"}</small>
+      `;
+      grid.appendChild(item);
+    });
+    row.appendChild(grid);
+    elements.stepGrid.appendChild(row);
   });
 }
 
@@ -577,8 +666,9 @@ function createVoiceEngine(audioContext) {
   return {
     play(step, time, controls) {
       const frequency = midiToFrequency(step.note);
-      const attackGain = step.accent ? controls.accent + state.features.edgeDensity * 0.5 : 0.72;
-      const noteLength = step.slide ? getStepDuration() + controls.slide : controls.decay;
+      const attackGain = (step.accent ? controls.accent + state.features.edgeDensity * 0.5 : 0.72) * (step.level ?? 1);
+      const baseLength = step.slide ? getStepDuration() + controls.slide : controls.decay;
+      const noteLength = baseLength * (step.durationScale ?? 1);
       const targetCutoff = clamp(step.cutoff, 120, 4000);
 
       filter.frequency.cancelScheduledValues(time);

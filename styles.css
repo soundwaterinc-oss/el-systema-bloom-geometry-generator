@@ -65,7 +65,8 @@ h1 {
 }
 
 .hero-actions,
-.controls {
+.controls,
+.layer-controls {
   display: grid;
   gap: 14px;
 }
@@ -140,6 +141,22 @@ canvas {
   display: block;
   margin-top: 6px;
   font-size: 1.3rem;
+}
+
+.layer-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.layer-row {
+  display: grid;
+  gap: 8px;
+}
+
+.layer-row-header {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
 }
 
 .step-grid {

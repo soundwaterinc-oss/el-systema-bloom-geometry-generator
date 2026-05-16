@@ -38,11 +38,6 @@
           </label>
 
           <label>
-            <span>Voice preset</span>
-            <select id="voicePreset"></select>
-          </label>
-
-          <label>
             <span>Scale preset</span>
             <select id="scalePreset"></select>
           </label>
@@ -93,6 +88,36 @@
             <input id="slide" type="range" min="0.02" max="0.3" step="0.01" value="0.12" />
             <strong id="slideValue">0.12</strong>
           </label>
+
+          <div class="layer-controls">
+            <label>
+              <span>Bass voice</span>
+              <select id="bassVoice"></select>
+            </label>
+            <label>
+              <span>Drone voice</span>
+              <select id="droneVoice"></select>
+            </label>
+            <label>
+              <span>Percussion voice</span>
+              <select id="percussionVoice"></select>
+            </label>
+            <label>
+              <span>Bass level</span>
+              <input id="bassLevel" type="range" min="0" max="1.2" step="0.01" value="0.9" />
+              <strong id="bassLevelValue">0.90</strong>
+            </label>
+            <label>
+              <span>Drone level</span>
+              <input id="droneLevel" type="range" min="0" max="1.2" step="0.01" value="0.34" />
+              <strong id="droneLevelValue">0.34</strong>
+            </label>
+            <label>
+              <span>Percussion level</span>
+              <input id="percussionLevel" type="range" min="0" max="1.2" step="0.01" value="0.56" />
+              <strong id="percussionLevelValue">0.56</strong>
+            </label>
+          </div>
         </div>
 
         <div class="panel visual">
@@ -111,7 +136,7 @@
               <strong id="complexityValue">0.00</strong>
             </div>
           </div>
-          <div id="stepGrid" class="step-grid" aria-label="16 step sequencer"></div>
+          <div id="stepGrid" class="layer-grid" aria-label="16 step sequencer"></div>
         </div>
       </section>
     </main>
