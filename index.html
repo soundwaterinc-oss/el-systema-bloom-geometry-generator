@@ -13,8 +13,8 @@
           <p class="eyebrow">Minimal Acid Geometry Generator</p>
           <h1>EL SYSTEMA ACID</h1>
           <p class="subtle">
-            Geometry drives note, accent, slide, and cutoff for a 16 step acid
-            bass sequencer.
+            Geometry drives note, accent, slide, and cutoff for a 16 step
+            cross-cultural voice sequencer.
           </p>
         </div>
         <div class="hero-actions">
@@ -38,6 +38,11 @@
           </label>
 
           <label>
+            <span>Voice preset</span>
+            <select id="voicePreset"></select>
+          </label>
+
+          <label>
             <span>Scale preset</span>
             <select id="scalePreset"></select>
           </label>
@@ -48,7 +53,12 @@
           </label>
 
           <label>
-            <span>Acid cutoff</span>
+            <span>Scan source</span>
+            <select id="visualPreset"></select>
+          </label>
+
+          <label>
+            <span>Cutoff</span>
             <input id="cutoff" type="range" min="180" max="2600" value="900" />
             <strong id="cutoffValue">900</strong>
           </label>
