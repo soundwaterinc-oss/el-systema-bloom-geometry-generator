@@ -261,6 +261,10 @@ async function toggleTransport() {
 function schedule() {
   const lookAhead = 0.12;
   while (state.nextStepTime < state.audioContext.currentTime + lookAhead) {
+    const scanSample = getScanSampleForStep(state.stepIndex);
+    if (state.droneBed) {
+      state.droneBed.setScanModulation(scanSample);
+    }
     playLayerStep("bass", state.nextStepTime);
     playLayerStep("percussion", state.nextStepTime);
     renderSteps(state.stepIndex);
@@ -303,7 +307,7 @@ function getDroneControls() {
 function playLayerStep(layer, time) {
   const step = state.layerPatterns[layer][state.stepIndex];
   if (step && step.active) {
-    state.synths[layer].play(step, time, getSynthControls());
+    state.synths[layer].play(step, time, getSynthControls(), getScanSampleForStep(state.stepIndex));
   }
 }
 
@@ -337,14 +341,18 @@ function buildBassPattern() {
   const octaveOffset = density > 0.53 ? 12 : 0;
 
   return Array.from({ length: STEPS }, (_, step) => {
+    const scan = getScanSampleForStep(step);
     const active = rhythm[step] === 1;
-    const degreeIndex = fn(step, state.features) + Math.floor(density * 2.5) + (step % 3 === 0 ? 1 : 0);
+    const degreeIndex = fn(step, state.features)
+      + Math.floor(density * 2.5)
+      + Math.floor(scan.brightness * 3)
+      + (step % 3 === 0 ? 1 : 0);
     const scaleNote = scale[((degreeIndex % scale.length) + scale.length) % scale.length];
     const accentThreshold = 0.28 + edgeDensity * 0.42;
     const slideThreshold = 0.35 + complexity * 0.32;
     const accent = active && normalizedStepValue(step, density, edgeDensity) > accentThreshold;
     const slide = active && normalizedStepValue(step, complexity, density) > slideThreshold;
-    const cutoffMod = Math.round(220 + complexity * 500 + edgeDensity * 420 + (step % 4) * 35);
+    const cutoffMod = Math.round(220 + complexity * 500 + edgeDensity * 420 + scan.edge * 700 + (step % 4) * 35);
 
     return {
       active,
@@ -354,6 +362,7 @@ function buildBassPattern() {
       note: ROOT_MIDI + scaleNote + octaveOffset,
       voice: elements.bassVoice.value,
       level: Number(elements.bassLevel.value),
+      pan: scan.pan,
     };
   });
 }
@@ -383,17 +392,20 @@ function buildPercussionPattern() {
   const { edgeDensity, complexity } = state.features;
 
   return Array.from({ length: STEPS }, (_, step) => {
+    const scan = getScanSampleForStep(step);
     const extraHit = complexity > 0.2 && [3, 7, 11, 15].includes(step);
+    const scanHit = scan.edge > 0.28 || scan.contrast > 0.22;
     const active = rhythm[step] === 1 || extraHit;
     return {
-      active,
-      accent: active && (step % 4 === 0 || edgeDensity > 0.1),
+      active: active || scanHit,
+      accent: (active || scanHit) && (step % 4 === 0 || edgeDensity > 0.1 || scan.edge > 0.35),
       slide: false,
-      cutoff: Number(elements.cutoff.value) * 1.18,
+      cutoff: Number(elements.cutoff.value) * (1.05 + scan.brightness * 0.55),
       note: ROOT_MIDI + 24 + ((step % 3) * 2),
       voice: elements.percussionVoice.value,
       level: Number(elements.percussionLevel.value),
       durationScale: 0.55,
+      pan: scan.pan,
     };
   });
 }
@@ -783,6 +795,33 @@ function getLuminanceProfile() {
   });
 }
 
+function getScanSamples() {
+  const profile = getLuminanceProfile();
+  return profile.map((value, index) => {
+    const previous = profile[Math.max(0, index - 1)] ?? value;
+    const next = profile[Math.min(profile.length - 1, index + 1)] ?? value;
+    const brightness = value / 255;
+    const contrast = Math.abs(next - previous) / 255;
+    const edge = Math.abs(next - value) / 255;
+    const point = state.scanPath[index] ?? { x: 0 };
+    return {
+      brightness,
+      contrast,
+      edge,
+      pan: ((point.x / elements.canvas.width) * 2) - 1,
+    };
+  });
+}
+
+function getScanSampleForStep(step) {
+  const samples = getScanSamples();
+  if (!samples.length) {
+    return { brightness: 0.5, contrast: 0, edge: 0, pan: 0 };
+  }
+  const index = Math.floor((step / STEPS) * samples.length);
+  return samples[Math.min(samples.length - 1, index)];
+}
+
 function drawLuminanceProfile(currentIndex = -1) {
   const profile = getLuminanceProfile();
   const { width, height } = elements.luminanceCanvas;
@@ -899,8 +938,8 @@ function createVoiceEngine(audioContext) {
   let lastFrequency = 110;
 
   return {
-    play(step, time, controls) {
-      const frequency = midiToFrequency(step.note);
+    play(step, time, controls, scanSample) {
+      const frequency = midiToFrequency(step.note) * (1 + (scanSample.brightness - 0.5) * 0.08);
       const attackGain = (step.accent ? controls.accent + state.features.edgeDensity * 0.5 : 0.72) * (step.level ?? 1);
       const baseLength = step.slide ? getStepDuration() + controls.slide : controls.decay;
       const noteLength = baseLength * (step.durationScale ?? 1);
@@ -917,11 +956,14 @@ function createVoiceEngine(audioContext) {
 
       const source = createVoiceSource(audioContext, step.voice, frequency, time, noteLength, step.slide, controls.slide, lastFrequency, controls);
       const amp = audioContext.createGain();
+      const panner = audioContext.createStereoPanner();
+      panner.pan.setValueAtTime(step.pan ?? scanSample.pan ?? 0, time);
       amp.gain.setValueAtTime(0.0001, time);
       amp.gain.exponentialRampToValueAtTime(attackGain, time + 0.005);
       amp.gain.exponentialRampToValueAtTime(0.0001, time + noteLength);
       source.output.connect(amp);
-      amp.connect(filter);
+      amp.connect(panner);
+      panner.connect(filter);
       source.start(time);
       source.stop(time + noteLength + 0.05);
       lastFrequency = frequency;
@@ -1270,6 +1312,10 @@ function createDroneBed(audioContext, notes, controls) {
       lfoGain.gain.setTargetAtTime(nextControls.lfoDepth, audioContext.currentTime, 0.05);
       filter.frequency.setTargetAtTime(nextControls.cutoff * 0.78 * nextControls.toneBrightness, audioContext.currentTime, 0.05);
       filter.Q.setTargetAtTime(nextControls.resonance * 0.75, audioContext.currentTime, 0.05);
+    },
+    setScanModulation(sample) {
+      filter.detune.setTargetAtTime((sample.brightness - 0.5) * 480, audioContext.currentTime, 0.08);
+      filter.Q.setTargetAtTime((controls.resonance * 0.55) + sample.contrast * 14, audioContext.currentTime, 0.08);
     },
   };
 }
