@@ -21,23 +21,27 @@ const scalePresets = {
 
 const voicePresets = {
   "Acid Bass": { label: "Acid Bass" },
+  "Industrial Metal": { label: "Industrial Metal" },
+  "Sheet Metal": { label: "Sheet Metal" },
+  "Physical Noise": { label: "Physical Noise" },
+  "Gamelan Gong": { label: "Gamelan Gong" },
+  "Gamelan Metallophone": { label: "Gamelan Metallophone" },
   "Pipe Organ": { label: "Pipe Organ" },
   "Fender Rhodes": { label: "Fender Rhodes" },
   Prophet: { label: "Prophet" },
-  Noise: { label: "Noise" },
-  "Sine Pure": { label: "Sine Pure" },
-  "Sine Bell": { label: "Sine Bell" },
-  "Sine FM": { label: "Sine FM" },
   Voice: { label: "Voice" },
   Kecak: { label: "Kecak" },
 };
 
 const visualPresets = {
   "Chevron Weave": "woven",
+  "Dark Chevron": "dark-woven",
   "Star Lattice": "star",
+  "Night Star Lattice": "dark-star",
   "Node Net": "nodes",
   "Cubic Weave": "cubes",
   "Brick Grid": "brick",
+  "Black Field": "black-field",
   "Plant Cell": "cell",
 };
 
@@ -120,9 +124,9 @@ function populatePresets() {
   fillSelect(elements.scalePreset, Object.keys(scalePresets), "Japanese In");
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
   fillSelect(elements.visualPreset, Object.keys(visualPresets), "Chevron Weave");
-  fillSelect(elements.bassVoice, ["Acid Bass", "Prophet", "Pipe Organ", "Sine Pure"], "Acid Bass");
-  fillSelect(elements.droneVoice, ["Pipe Organ", "Fender Rhodes", "Sine Bell", "Voice"], "Pipe Organ");
-  fillSelect(elements.percussionVoice, ["Kecak", "Noise", "Voice", "Sine FM"], "Kecak");
+  fillSelect(elements.bassVoice, ["Industrial Metal", "Acid Bass", "Gamelan Metallophone", "Prophet"], "Industrial Metal");
+  fillSelect(elements.droneVoice, ["Gamelan Gong", "Voice", "Pipe Organ", "Sheet Metal"], "Gamelan Gong");
+  fillSelect(elements.percussionVoice, ["Physical Noise", "Kecak", "Voice", "Sheet Metal"], "Physical Noise");
 }
 
 function fillSelect(select, items, initial) {
@@ -327,8 +331,14 @@ function normalizedStepValue(step, a, b) {
 
 function drawGeometry() {
   switch (visualPresets[elements.visualPreset.value]) {
+    case "dark-woven":
+      drawWovenGeometry(true);
+      break;
     case "star":
       drawStarLattice();
+      break;
+    case "dark-star":
+      drawStarLattice(true);
       break;
     case "nodes":
       drawNodeNet();
@@ -338,6 +348,9 @@ function drawGeometry() {
       break;
     case "brick":
       drawBrickGrid();
+      break;
+    case "black-field":
+      drawBlackField();
       break;
     case "cell":
       drawPlantCells();
@@ -349,14 +362,14 @@ function drawGeometry() {
   }
 }
 
-function drawWovenGeometry() {
+function drawWovenGeometry(inverted = false) {
   const { width, height } = elements.canvas;
   const { lanes, spacing, angleShift } = state.geometrySeeds;
 
   ctx2d.clearRect(0, 0, width, height);
-  ctx2d.fillStyle = "#f5f3ee";
+  ctx2d.fillStyle = inverted ? "#101010" : "#f5f3ee";
   ctx2d.fillRect(0, 0, width, height);
-  ctx2d.strokeStyle = "#121212";
+  ctx2d.strokeStyle = inverted ? "#f5f3ee" : "#121212";
   ctx2d.lineWidth = 4;
   ctx2d.lineCap = "square";
 
@@ -372,7 +385,7 @@ function drawWovenGeometry() {
     }
   }
 
-  ctx2d.strokeStyle = "#f5f3ee";
+  ctx2d.strokeStyle = inverted ? "#101010" : "#f5f3ee";
   ctx2d.lineWidth = 7;
   for (let x = 0; x < width; x += spacing * 4) {
     ctx2d.beginPath();
@@ -418,12 +431,12 @@ function drawPlantCells() {
   }
 }
 
-function drawStarLattice() {
+function drawStarLattice(inverted = false) {
   const { width, height } = elements.canvas;
   ctx2d.clearRect(0, 0, width, height);
-  ctx2d.fillStyle = "#f7f5ef";
+  ctx2d.fillStyle = inverted ? "#101010" : "#f7f5ef";
   ctx2d.fillRect(0, 0, width, height);
-  ctx2d.strokeStyle = "#111";
+  ctx2d.strokeStyle = inverted ? "#f7f5ef" : "#111";
   ctx2d.lineWidth = 2;
   const size = 92;
 
@@ -535,6 +548,31 @@ function drawBrickGrid() {
       ctx2d.lineTo(x + offset + brickW * 0.62, y + brickH);
       ctx2d.stroke();
     }
+  }
+}
+
+function drawBlackField() {
+  const { width, height } = elements.canvas;
+  ctx2d.clearRect(0, 0, width, height);
+  ctx2d.fillStyle = "#0a0a0a";
+  ctx2d.fillRect(0, 0, width, height);
+  ctx2d.strokeStyle = "#f1eee7";
+  ctx2d.lineWidth = 3;
+
+  for (let i = 0; i < 22; i += 1) {
+    const x = randomSeeded(i * 13.1) * width;
+    const y = randomSeeded(i * 31.7) * height;
+    const radius = 18 + randomSeeded(i * 71.3) * 74;
+    ctx2d.beginPath();
+    ctx2d.arc(x, y, radius, 0, Math.PI * 2);
+    ctx2d.stroke();
+  }
+
+  for (let y = -40; y < height + 80; y += 48) {
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, y);
+    ctx2d.lineTo(width, y + 80);
+    ctx2d.stroke();
   }
 }
 
@@ -670,13 +708,15 @@ function createVoiceEngine(audioContext) {
       const baseLength = step.slide ? getStepDuration() + controls.slide : controls.decay;
       const noteLength = baseLength * (step.durationScale ?? 1);
       const targetCutoff = clamp(step.cutoff, 120, 4000);
+      const voiceProfile = getVoiceProfile(step.voice);
 
       filter.frequency.cancelScheduledValues(time);
       filter.Q.cancelScheduledValues(time);
-      filter.frequency.setValueAtTime(targetCutoff * 0.65, time);
-      filter.frequency.linearRampToValueAtTime(targetCutoff * (step.accent ? 1.25 : 1), time + 0.03);
-      filter.frequency.exponentialRampToValueAtTime(Math.max(140, targetCutoff * 0.48), time + noteLength);
-      filter.Q.setValueAtTime(controls.resonance, time);
+      filter.type = voiceProfile.filterType;
+      filter.frequency.setValueAtTime(targetCutoff * voiceProfile.startCutoff, time);
+      filter.frequency.linearRampToValueAtTime(targetCutoff * voiceProfile.peakCutoff, time + voiceProfile.attack);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(140, targetCutoff * voiceProfile.releaseCutoff), time + noteLength);
+      filter.Q.setValueAtTime(controls.resonance * voiceProfile.qScale, time);
 
       const source = createVoiceSource(audioContext, step.voice, frequency, time, noteLength, step.slide, controls.slide, lastFrequency);
       const amp = audioContext.createGain();
@@ -694,6 +734,36 @@ function createVoiceEngine(audioContext) {
 
 function createVoiceSource(audioContext, voice, frequency, time, noteLength, slide, slideTime, lastFrequency) {
   switch (voice) {
+    case "Industrial Metal":
+      return createLayeredOscillators(audioContext, [
+        { type: "sawtooth", ratio: 1, gain: 0.42 },
+        { type: "square", ratio: 1.414, gain: 0.2 },
+        { type: "sine", ratio: 2.71, gain: 0.22 },
+        { type: "triangle", ratio: 4.11, gain: 0.14 },
+      ], frequency, time, slide, slideTime, lastFrequency);
+    case "Sheet Metal":
+      return createLayeredOscillators(audioContext, [
+        { type: "triangle", ratio: 1, gain: 0.35 },
+        { type: "sine", ratio: 2.13, gain: 0.28 },
+        { type: "sine", ratio: 3.89, gain: 0.22 },
+        { type: "sine", ratio: 5.43, gain: 0.15 },
+      ], frequency, time, slide, slideTime, lastFrequency);
+    case "Physical Noise":
+      return createPhysicalNoise(audioContext, frequency, noteLength, time);
+    case "Gamelan Gong":
+      return createLayeredOscillators(audioContext, [
+        { type: "sine", ratio: 1, gain: 0.62 },
+        { type: "sine", ratio: 1.52, gain: 0.2 },
+        { type: "sine", ratio: 2.08, gain: 0.16 },
+        { type: "sine", ratio: 2.71, gain: 0.12 },
+      ], frequency * 0.5, time, slide, slideTime, lastFrequency * 0.5);
+    case "Gamelan Metallophone":
+      return createLayeredOscillators(audioContext, [
+        { type: "sine", ratio: 1, gain: 0.54 },
+        { type: "sine", ratio: 1.39, gain: 0.2 },
+        { type: "sine", ratio: 2.03, gain: 0.18 },
+        { type: "sine", ratio: 3.76, gain: 0.12 },
+      ], frequency, time, slide, slideTime, lastFrequency);
     case "Pipe Organ":
       return createLayeredOscillators(audioContext, [
         { type: "sine", ratio: 1, gain: 0.7 },
@@ -711,18 +781,6 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
         { type: "sawtooth", ratio: 1, gain: 0.55 },
         { type: "sawtooth", ratio: 1.01, gain: 0.45 },
       ], frequency, time, slide, slideTime, lastFrequency);
-    case "Noise":
-      return createNoiseSource(audioContext, noteLength);
-    case "Sine Pure":
-      return createLayeredOscillators(audioContext, [{ type: "sine", ratio: 1, gain: 1 }], frequency, time, slide, slideTime, lastFrequency);
-    case "Sine Bell":
-      return createLayeredOscillators(audioContext, [
-        { type: "sine", ratio: 1, gain: 0.7 },
-        { type: "sine", ratio: 2.7, gain: 0.2 },
-        { type: "sine", ratio: 4.1, gain: 0.12 },
-      ], frequency, time, slide, slideTime, lastFrequency);
-    case "Sine FM":
-      return createFmSource(audioContext, frequency, time, slide, slideTime, lastFrequency);
     case "Voice":
       return createFormantVoice(audioContext, frequency, time, slide, slideTime, lastFrequency, false);
     case "Kecak":
@@ -730,6 +788,24 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
     case "Acid Bass":
     default:
       return createLayeredOscillators(audioContext, [{ type: "sawtooth", ratio: 1, gain: 1 }], frequency, time, slide, slideTime, lastFrequency);
+  }
+}
+
+function getVoiceProfile(voice) {
+  switch (voice) {
+    case "Industrial Metal":
+    case "Sheet Metal":
+    case "Gamelan Metallophone":
+      return { filterType: "highpass", startCutoff: 0.42, peakCutoff: 1.8, releaseCutoff: 0.7, attack: 0.008, qScale: 1.35 };
+    case "Physical Noise":
+      return { filterType: "bandpass", startCutoff: 0.8, peakCutoff: 1.7, releaseCutoff: 0.72, attack: 0.004, qScale: 1.6 };
+    case "Voice":
+    case "Kecak":
+      return { filterType: "bandpass", startCutoff: 0.7, peakCutoff: 1.35, releaseCutoff: 0.82, attack: 0.01, qScale: 1.15 };
+    case "Gamelan Gong":
+      return { filterType: "lowpass", startCutoff: 0.45, peakCutoff: 1.15, releaseCutoff: 0.55, attack: 0.02, qScale: 0.8 };
+    default:
+      return { filterType: "lowpass", startCutoff: 0.65, peakCutoff: 1.25, releaseCutoff: 0.48, attack: 0.03, qScale: 1 };
   }
 }
 
@@ -769,6 +845,31 @@ function createNoiseSource(audioContext, noteLength) {
     },
     stop(stopTime) {
       source.stop(stopTime);
+    },
+  };
+}
+
+function createPhysicalNoise(audioContext, frequency, noteLength, time) {
+  const noise = createNoiseSource(audioContext, noteLength);
+  const impulse = audioContext.createOscillator();
+  const impulseGain = audioContext.createGain();
+  const output = audioContext.createGain();
+  impulse.type = "triangle";
+  impulse.frequency.value = frequency * 3.2;
+  impulseGain.gain.setValueAtTime(0.9, time);
+  impulseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.06);
+  noise.output.connect(output);
+  impulse.connect(impulseGain);
+  impulseGain.connect(output);
+  return {
+    output,
+    start(startTime) {
+      noise.start(startTime);
+      impulse.start(startTime);
+    },
+    stop(stopTime) {
+      noise.stop(stopTime);
+      impulse.stop(stopTime);
     },
   };
 }
