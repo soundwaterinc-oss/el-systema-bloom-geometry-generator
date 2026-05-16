@@ -53,6 +53,16 @@
           </label>
 
           <label>
+            <span>Image input</span>
+            <input id="imageInput" type="file" accept="image/*" />
+          </label>
+
+          <label>
+            <span>Scan path</span>
+            <select id="scanPathPreset"></select>
+          </label>
+
+          <label>
             <span>Cutoff</span>
             <input id="cutoff" type="range" min="180" max="2600" value="900" />
             <strong id="cutoffValue">900</strong>
@@ -88,6 +98,29 @@
             <input id="slide" type="range" min="0.02" max="0.3" step="0.01" value="0.12" />
             <strong id="slideValue">0.12</strong>
           </label>
+
+          <div class="layer-controls">
+            <label>
+              <span>Tone brightness</span>
+              <input id="toneBrightness" type="range" min="0.2" max="2.4" step="0.01" value="1.1" />
+              <strong id="toneBrightnessValue">1.10</strong>
+            </label>
+            <label>
+              <span>Grit</span>
+              <input id="grit" type="range" min="0" max="1.4" step="0.01" value="0.4" />
+              <strong id="gritValue">0.40</strong>
+            </label>
+            <label>
+              <span>Noise mix</span>
+              <input id="noiseMix" type="range" min="0" max="1" step="0.01" value="0.24" />
+              <strong id="noiseMixValue">0.24</strong>
+            </label>
+            <label>
+              <span>Click amount</span>
+              <input id="clickAmount" type="range" min="0" max="1.6" step="0.01" value="0.72" />
+              <strong id="clickAmountValue">0.72</strong>
+            </label>
+          </div>
 
           <div class="layer-controls">
             <label>
@@ -132,6 +165,7 @@
 
         <div class="panel visual">
           <canvas id="geometryCanvas" width="640" height="420"></canvas>
+          <canvas id="luminanceCanvas" width="640" height="120"></canvas>
           <div class="feature-grid">
             <div>
               <span>Density</span>

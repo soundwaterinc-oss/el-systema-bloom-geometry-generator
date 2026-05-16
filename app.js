@@ -52,6 +52,13 @@ const visualPresets = {
   "Plant Cell": "cell",
 };
 
+const scanPathPresets = {
+  "Horizontal Raster": "horizontal",
+  "Vertical Raster": "vertical",
+  Diagonal: "diagonal",
+  Spiral: "spiral",
+};
+
 const functionPresets = {
   Orbit: (step, features) =>
     Math.floor((step * (1 + features.complexity * 2) + features.edgeDensity * 6) % 8),
@@ -67,6 +74,8 @@ const state = {
   audioContext: null,
   synths: null,
   droneBed: null,
+  uploadedImage: null,
+  scanPath: [],
   isPlaying: false,
   stepIndex: 0,
   nextStepTime: 0,
@@ -99,6 +108,8 @@ const elements = {
   scalePreset: document.querySelector("#scalePreset"),
   functionPreset: document.querySelector("#functionPreset"),
   visualPreset: document.querySelector("#visualPreset"),
+  imageInput: document.querySelector("#imageInput"),
+  scanPathPreset: document.querySelector("#scanPathPreset"),
   cutoff: document.querySelector("#cutoff"),
   cutoffValue: document.querySelector("#cutoffValue"),
   resonance: document.querySelector("#resonance"),
@@ -109,6 +120,14 @@ const elements = {
   accentValue: document.querySelector("#accentValue"),
   slide: document.querySelector("#slide"),
   slideValue: document.querySelector("#slideValue"),
+  toneBrightness: document.querySelector("#toneBrightness"),
+  toneBrightnessValue: document.querySelector("#toneBrightnessValue"),
+  grit: document.querySelector("#grit"),
+  gritValue: document.querySelector("#gritValue"),
+  noiseMix: document.querySelector("#noiseMix"),
+  noiseMixValue: document.querySelector("#noiseMixValue"),
+  clickAmount: document.querySelector("#clickAmount"),
+  clickAmountValue: document.querySelector("#clickAmountValue"),
   bassVoice: document.querySelector("#bassVoice"),
   droneVoice: document.querySelector("#droneVoice"),
   percussionVoice: document.querySelector("#percussionVoice"),
@@ -126,16 +145,19 @@ const elements = {
   edgeDensityValue: document.querySelector("#edgeDensityValue"),
   complexityValue: document.querySelector("#complexityValue"),
   canvas: document.querySelector("#geometryCanvas"),
+  luminanceCanvas: document.querySelector("#luminanceCanvas"),
   stepGrid: document.querySelector("#stepGrid"),
 };
 
 const ctx2d = elements.canvas.getContext("2d");
+const luminanceCtx = elements.luminanceCanvas.getContext("2d");
 
 function populatePresets() {
   fillSelect(elements.rhythmPreset, Object.keys(rhythmPresets), "Kecak Cycle");
   fillSelect(elements.scalePreset, Object.keys(scalePresets), "Japanese In");
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
   fillSelect(elements.visualPreset, Object.keys(visualPresets), "Chevron Weave");
+  fillSelect(elements.scanPathPreset, Object.keys(scanPathPresets), "Horizontal Raster");
   fillSelect(elements.bassVoice, ["Scan Pulse", "Data Click", "Gamelan Metallophone", "Industrial Metal"], "Scan Pulse");
   fillSelect(elements.droneVoice, ["Bit Noise", "White Burst", "Ritual Chorus", "Gamelan Gong"], "Bit Noise");
   fillSelect(elements.percussionVoice, ["Data Click", "White Burst", "Physical Noise", "Kecak"], "Data Click");
@@ -158,13 +180,21 @@ function bindControls() {
     mutateGeometry();
     rebuildPattern();
   });
+  elements.imageInput.addEventListener("change", handleImageUpload);
 
-  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "bassLevel", "droneLevel", "droneLfoRate", "droneLfoDepth", "percussionLevel"].forEach((id) => {
-    elements[id].addEventListener("input", syncLabels);
+  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "toneBrightness", "grit", "noiseMix", "clickAmount", "bassLevel", "droneLevel", "droneLfoRate", "droneLfoDepth", "percussionLevel"].forEach((id) => {
+    elements[id].addEventListener("input", () => {
+      syncLabels();
+      rebuildPattern(false);
+    });
   });
 
-  ["rhythmPreset", "bassVoice", "droneVoice", "percussionVoice", "scalePreset", "functionPreset", "visualPreset"].forEach((id) => {
-    elements[id].addEventListener("change", rebuildPattern);
+  ["rhythmPreset", "bassVoice", "percussionVoice", "functionPreset", "visualPreset", "scanPathPreset"].forEach((id) => {
+    elements[id].addEventListener("change", () => rebuildPattern(false));
+  });
+
+  ["droneVoice", "scalePreset"].forEach((id) => {
+    elements[id].addEventListener("change", () => rebuildPattern(true));
   });
 }
 
@@ -175,6 +205,10 @@ function syncLabels() {
   elements.decayValue.textContent = Number(elements.decay.value).toFixed(2);
   elements.accentValue.textContent = Number(elements.accent.value).toFixed(2);
   elements.slideValue.textContent = Number(elements.slide.value).toFixed(2);
+  elements.toneBrightnessValue.textContent = Number(elements.toneBrightness.value).toFixed(2);
+  elements.gritValue.textContent = Number(elements.grit.value).toFixed(2);
+  elements.noiseMixValue.textContent = Number(elements.noiseMix.value).toFixed(2);
+  elements.clickAmountValue.textContent = Number(elements.clickAmount.value).toFixed(2);
   elements.bassLevelValue.textContent = Number(elements.bassLevel.value).toFixed(2);
   elements.droneLevelValue.textContent = Number(elements.droneLevel.value).toFixed(2);
   elements.droneLfoRateValue.textContent = Number(elements.droneLfoRate.value).toFixed(2);
@@ -247,6 +281,10 @@ function getSynthControls() {
     decay: Number(elements.decay.value),
     accent: Number(elements.accent.value),
     slide: Number(elements.slide.value),
+    toneBrightness: Number(elements.toneBrightness.value),
+    grit: Number(elements.grit.value),
+    noiseMix: Number(elements.noiseMix.value),
+    clickAmount: Number(elements.clickAmount.value),
   };
 }
 
@@ -258,6 +296,7 @@ function getDroneControls() {
     lfoRate: Number(elements.droneLfoRate.value),
     lfoDepth: Number(elements.droneLfoDepth.value),
     voice: elements.droneVoice.value,
+    toneBrightness: Number(elements.toneBrightness.value),
   };
 }
 
@@ -268,13 +307,16 @@ function playLayerStep(layer, time) {
   }
 }
 
-function rebuildPattern() {
-  drawGeometry();
+function rebuildPattern(restartDrone = false) {
+  state.scanPath = buildScanPath();
+  drawGeometry(false);
   state.features = extractFeatures();
   state.layerPatterns = buildLayerPatterns();
   syncFeatureLabels();
+  drawScanOverlay();
+  drawLuminanceProfile();
   renderSteps();
-  if (state.isPlaying) {
+  if (state.isPlaying && restartDrone) {
     restartDroneBed();
   }
 }
@@ -361,7 +403,13 @@ function normalizedStepValue(step, a, b) {
   return (wave * 0.65) + (b * 0.35);
 }
 
-function drawGeometry() {
+function drawGeometry(withOverlay = true) {
+  if (state.uploadedImage) {
+    drawUploadedImage();
+    if (withOverlay) drawScanOverlay();
+    return;
+  }
+
   switch (visualPresets[elements.visualPreset.value]) {
     case "dark-woven":
       drawWovenGeometry(true);
@@ -392,6 +440,79 @@ function drawGeometry() {
       drawWovenGeometry();
       break;
   }
+  if (withOverlay) drawScanOverlay();
+}
+
+function drawUploadedImage() {
+  const { width, height } = elements.canvas;
+  ctx2d.clearRect(0, 0, width, height);
+  ctx2d.fillStyle = "#0a0a0a";
+  ctx2d.fillRect(0, 0, width, height);
+  const image = state.uploadedImage;
+  const scale = Math.min(width / image.width, height / image.height);
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  const x = (width - drawWidth) / 2;
+  const y = (height - drawHeight) / 2;
+  ctx2d.drawImage(image, x, y, drawWidth, drawHeight);
+}
+
+function drawScanOverlay(currentIndex = -1) {
+  if (!state.scanPath.length) return;
+  ctx2d.save();
+  ctx2d.strokeStyle = "rgba(255, 122, 24, 0.88)";
+  ctx2d.lineWidth = 2;
+  ctx2d.beginPath();
+  state.scanPath.forEach((point, index) => {
+    if (index === 0) ctx2d.moveTo(point.x, point.y);
+    else ctx2d.lineTo(point.x, point.y);
+  });
+  ctx2d.stroke();
+
+  if (currentIndex >= 0) {
+    const point = state.scanPath[currentIndex % state.scanPath.length];
+    ctx2d.fillStyle = "#8df9a8";
+    ctx2d.beginPath();
+    ctx2d.arc(point.x, point.y, 5, 0, Math.PI * 2);
+    ctx2d.fill();
+  }
+  ctx2d.restore();
+}
+
+function buildScanPath() {
+  const { width, height } = elements.canvas;
+  const pathType = scanPathPresets[elements.scanPathPreset.value];
+  const points = [];
+  const count = 256;
+
+  for (let i = 0; i < count; i += 1) {
+    const t = i / (count - 1);
+    if (pathType === "vertical") {
+      points.push({ x: width * (0.1 + 0.8 * ((i % 16) / 15)), y: height * (Math.floor(i / 16) / 15) });
+    } else if (pathType === "diagonal") {
+      points.push({ x: width * t, y: height * t });
+    } else if (pathType === "spiral") {
+      const angle = t * Math.PI * 8;
+      const radius = t * Math.min(width, height) * 0.42;
+      points.push({ x: width / 2 + Math.cos(angle) * radius, y: height / 2 + Math.sin(angle) * radius });
+    } else {
+      points.push({ x: width * (i % 16) / 15, y: height * (Math.floor(i / 16) / 15) });
+    }
+  }
+
+  return points;
+}
+
+function handleImageUpload(event) {
+  const [file] = event.target.files;
+  if (!file) return;
+  const image = new Image();
+  image.onload = () => {
+    state.uploadedImage = image;
+    rebuildPattern();
+    URL.revokeObjectURL(image.src);
+  };
+  image.src = URL.createObjectURL(file);
 }
 
 function drawWovenGeometry(inverted = false) {
@@ -650,6 +771,47 @@ function extractFeatures() {
   };
 }
 
+function getLuminanceProfile() {
+  if (!state.scanPath.length) return [];
+  const { width } = elements.canvas;
+  const data = ctx2d.getImageData(0, 0, elements.canvas.width, elements.canvas.height).data;
+  return state.scanPath.map(({ x, y }) => {
+    const px = clamp(Math.round(x), 0, elements.canvas.width - 1);
+    const py = clamp(Math.round(y), 0, elements.canvas.height - 1);
+    const idx = (py * width + px) * 4;
+    return (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+  });
+}
+
+function drawLuminanceProfile(currentIndex = -1) {
+  const profile = getLuminanceProfile();
+  const { width, height } = elements.luminanceCanvas;
+  luminanceCtx.clearRect(0, 0, width, height);
+  luminanceCtx.fillStyle = "#0c1218";
+  luminanceCtx.fillRect(0, 0, width, height);
+  if (!profile.length) return;
+
+  luminanceCtx.strokeStyle = "#ffb36d";
+  luminanceCtx.lineWidth = 2;
+  luminanceCtx.beginPath();
+  profile.forEach((value, index) => {
+    const x = (index / (profile.length - 1)) * width;
+    const y = height - (value / 255) * height;
+    if (index === 0) luminanceCtx.moveTo(x, y);
+    else luminanceCtx.lineTo(x, y);
+  });
+  luminanceCtx.stroke();
+
+  if (currentIndex >= 0) {
+    const x = ((currentIndex % profile.length) / (profile.length - 1)) * width;
+    luminanceCtx.strokeStyle = "#8df9a8";
+    luminanceCtx.beginPath();
+    luminanceCtx.moveTo(x, 0);
+    luminanceCtx.lineTo(x, height);
+    luminanceCtx.stroke();
+  }
+}
+
 function syncFeatureLabels() {
   elements.densityValue.textContent = state.features.density.toFixed(2);
   elements.edgeDensityValue.textContent = state.features.edgeDensity.toFixed(2);
@@ -657,6 +819,9 @@ function syncFeatureLabels() {
 }
 
 function renderSteps(currentStep = -1) {
+  drawGeometry(false);
+  drawScanOverlay(currentStep >= 0 ? Math.floor((currentStep / STEPS) * state.scanPath.length) : -1);
+  drawLuminanceProfile(currentStep >= 0 ? Math.floor((currentStep / STEPS) * state.scanPath.length) : -1);
   elements.stepGrid.innerHTML = "";
   [
     ["bass", "Bass"],
@@ -745,12 +910,12 @@ function createVoiceEngine(audioContext) {
       filter.frequency.cancelScheduledValues(time);
       filter.Q.cancelScheduledValues(time);
       filter.type = voiceProfile.filterType;
-      filter.frequency.setValueAtTime(targetCutoff * voiceProfile.startCutoff, time);
-      filter.frequency.linearRampToValueAtTime(targetCutoff * voiceProfile.peakCutoff, time + voiceProfile.attack);
-      filter.frequency.exponentialRampToValueAtTime(Math.max(140, targetCutoff * voiceProfile.releaseCutoff), time + noteLength);
+      filter.frequency.setValueAtTime(targetCutoff * voiceProfile.startCutoff * controls.toneBrightness, time);
+      filter.frequency.linearRampToValueAtTime(targetCutoff * voiceProfile.peakCutoff * controls.toneBrightness, time + voiceProfile.attack);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(140, targetCutoff * voiceProfile.releaseCutoff * controls.toneBrightness), time + noteLength);
       filter.Q.setValueAtTime(controls.resonance * voiceProfile.qScale, time);
 
-      const source = createVoiceSource(audioContext, step.voice, frequency, time, noteLength, step.slide, controls.slide, lastFrequency);
+      const source = createVoiceSource(audioContext, step.voice, frequency, time, noteLength, step.slide, controls.slide, lastFrequency, controls);
       const amp = audioContext.createGain();
       amp.gain.setValueAtTime(0.0001, time);
       amp.gain.exponentialRampToValueAtTime(attackGain, time + 0.005);
@@ -764,7 +929,7 @@ function createVoiceEngine(audioContext) {
   };
 }
 
-function createVoiceSource(audioContext, voice, frequency, time, noteLength, slide, slideTime, lastFrequency) {
+function createVoiceSource(audioContext, voice, frequency, time, noteLength, slide, slideTime, lastFrequency, controls) {
   switch (voice) {
     case "Bronze Cluster":
       return createLayeredOscillators(audioContext, [
@@ -790,13 +955,13 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
     case "Physical Noise":
       return createPhysicalNoise(audioContext, frequency, noteLength, time);
     case "Data Click":
-      return createDataClick(audioContext, frequency, noteLength, time);
+      return createDataClick(audioContext, frequency, noteLength, time, controls.clickAmount);
     case "Bit Noise":
-      return createBitNoise(audioContext, frequency, noteLength, time);
+      return createBitNoise(audioContext, frequency, noteLength, time, controls.grit);
     case "Scan Pulse":
       return createScanPulse(audioContext, frequency, time, slide, slideTime, lastFrequency);
     case "White Burst":
-      return createWhiteBurst(audioContext, noteLength, time);
+      return createWhiteBurst(audioContext, noteLength, time, controls.noiseMix);
     case "Gamelan Gong":
       return createLayeredOscillators(audioContext, [
         { type: "sine", ratio: 1, gain: 0.62 },
@@ -935,7 +1100,7 @@ function createPhysicalNoise(audioContext, frequency, noteLength, time) {
   };
 }
 
-function createDataClick(audioContext, frequency, noteLength, time) {
+function createDataClick(audioContext, frequency, noteLength, time, clickAmount) {
   const output = audioContext.createGain();
   const click = audioContext.createOscillator();
   const tick = audioContext.createOscillator();
@@ -945,9 +1110,9 @@ function createDataClick(audioContext, frequency, noteLength, time) {
   tick.type = "sine";
   click.frequency.value = Math.max(1800, frequency * 16);
   tick.frequency.value = Math.max(3200, frequency * 24);
-  clickGain.gain.setValueAtTime(0.95, time);
+  clickGain.gain.setValueAtTime(0.95 * clickAmount, time);
   clickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.018);
-  tickGain.gain.setValueAtTime(0.5, time);
+  tickGain.gain.setValueAtTime(0.5 * clickAmount, time);
   tickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
   click.connect(clickGain);
   tick.connect(tickGain);
@@ -966,7 +1131,7 @@ function createDataClick(audioContext, frequency, noteLength, time) {
   };
 }
 
-function createBitNoise(audioContext, frequency, noteLength, time) {
+function createBitNoise(audioContext, frequency, noteLength, time, grit) {
   const buffer = audioContext.createBuffer(1, Math.ceil(audioContext.sampleRate * (noteLength + 0.1)), audioContext.sampleRate);
   const data = buffer.getChannelData(0);
   const stride = Math.max(2, Math.floor(audioContext.sampleRate / Math.max(80, frequency * 2)));
@@ -975,7 +1140,7 @@ function createBitNoise(audioContext, frequency, noteLength, time) {
     if (i % stride === 0) {
       current = Math.random() > 0.5 ? 1 : -1;
     }
-    data[i] = current;
+    data[i] = current * (0.45 + grit * 0.55);
   }
   const source = audioContext.createBufferSource();
   source.buffer = buffer;
@@ -998,10 +1163,10 @@ function createScanPulse(audioContext, frequency, time, slide, slideTime, lastFr
   ], frequency, time, slide, slideTime, lastFrequency);
 }
 
-function createWhiteBurst(audioContext, noteLength, time) {
+function createWhiteBurst(audioContext, noteLength, time, noiseMix) {
   const source = createNoiseSource(audioContext, noteLength);
   const output = audioContext.createGain();
-  output.gain.setValueAtTime(1, time);
+  output.gain.setValueAtTime(noiseMix, time);
   output.gain.exponentialRampToValueAtTime(0.0001, time + Math.min(noteLength, 0.08));
   source.output.connect(output);
   return {
@@ -1073,7 +1238,7 @@ function createDroneBed(audioContext, notes, controls) {
   output.gain.value = controls.level;
   const filter = audioContext.createBiquadFilter();
   filter.type = controls.voice === "Ritual Chorus" ? "bandpass" : "lowpass";
-  filter.frequency.value = controls.cutoff * 0.78;
+  filter.frequency.value = controls.cutoff * 0.78 * controls.toneBrightness;
   filter.Q.value = controls.resonance * 0.75;
   output.connect(filter);
   filter.connect(audioContext.destination);
@@ -1103,7 +1268,7 @@ function createDroneBed(audioContext, notes, controls) {
       output.gain.setTargetAtTime(nextControls.level, audioContext.currentTime, 0.05);
       lfo.frequency.setTargetAtTime(nextControls.lfoRate, audioContext.currentTime, 0.05);
       lfoGain.gain.setTargetAtTime(nextControls.lfoDepth, audioContext.currentTime, 0.05);
-      filter.frequency.setTargetAtTime(nextControls.cutoff * 0.78, audioContext.currentTime, 0.05);
+      filter.frequency.setTargetAtTime(nextControls.cutoff * 0.78 * nextControls.toneBrightness, audioContext.currentTime, 0.05);
       filter.Q.setTargetAtTime(nextControls.resonance * 0.75, audioContext.currentTime, 0.05);
     },
   };

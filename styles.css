@@ -120,6 +120,10 @@ canvas {
   border: 1px solid var(--line);
 }
 
+#luminanceCanvas {
+  min-height: 120px;
+}
+
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
