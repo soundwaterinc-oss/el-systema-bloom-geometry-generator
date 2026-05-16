@@ -24,6 +24,10 @@ const voicePresets = {
   "Industrial Metal": { label: "Industrial Metal" },
   "Sheet Metal": { label: "Sheet Metal" },
   "Physical Noise": { label: "Physical Noise" },
+  "Data Click": { label: "Data Click" },
+  "Bit Noise": { label: "Bit Noise" },
+  "Scan Pulse": { label: "Scan Pulse" },
+  "White Burst": { label: "White Burst" },
   "Bronze Cluster": { label: "Bronze Cluster" },
   "Gamelan Gong": { label: "Gamelan Gong" },
   "Gamelan Metallophone": { label: "Gamelan Metallophone" },
@@ -132,9 +136,9 @@ function populatePresets() {
   fillSelect(elements.scalePreset, Object.keys(scalePresets), "Japanese In");
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
   fillSelect(elements.visualPreset, Object.keys(visualPresets), "Chevron Weave");
-  fillSelect(elements.bassVoice, ["Gamelan Metallophone", "Bronze Cluster", "Industrial Metal", "Acid Bass"], "Gamelan Metallophone");
-  fillSelect(elements.droneVoice, ["Ritual Chorus", "Gamelan Gong", "Voice", "Sheet Metal"], "Ritual Chorus");
-  fillSelect(elements.percussionVoice, ["Kecak", "Bamboo Thump", "Physical Noise", "Sheet Metal"], "Kecak");
+  fillSelect(elements.bassVoice, ["Scan Pulse", "Data Click", "Gamelan Metallophone", "Industrial Metal"], "Scan Pulse");
+  fillSelect(elements.droneVoice, ["Bit Noise", "White Burst", "Ritual Chorus", "Gamelan Gong"], "Bit Noise");
+  fillSelect(elements.percussionVoice, ["Data Click", "White Burst", "Physical Noise", "Kecak"], "Data Click");
 }
 
 function fillSelect(select, items, initial) {
@@ -785,6 +789,14 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
       ], frequency, time, slide, slideTime, lastFrequency);
     case "Physical Noise":
       return createPhysicalNoise(audioContext, frequency, noteLength, time);
+    case "Data Click":
+      return createDataClick(audioContext, frequency, noteLength, time);
+    case "Bit Noise":
+      return createBitNoise(audioContext, frequency, noteLength, time);
+    case "Scan Pulse":
+      return createScanPulse(audioContext, frequency, time, slide, slideTime, lastFrequency);
+    case "White Burst":
+      return createWhiteBurst(audioContext, noteLength, time);
     case "Gamelan Gong":
       return createLayeredOscillators(audioContext, [
         { type: "sine", ratio: 1, gain: 0.62 },
@@ -838,7 +850,14 @@ function getVoiceProfile(voice) {
     case "Bronze Cluster":
       return { filterType: "highpass", startCutoff: 0.42, peakCutoff: 1.8, releaseCutoff: 0.7, attack: 0.008, qScale: 1.35 };
     case "Physical Noise":
+    case "White Burst":
       return { filterType: "bandpass", startCutoff: 0.8, peakCutoff: 1.7, releaseCutoff: 0.72, attack: 0.004, qScale: 1.6 };
+    case "Data Click":
+      return { filterType: "highpass", startCutoff: 0.9, peakCutoff: 2.2, releaseCutoff: 0.88, attack: 0.002, qScale: 1.8 };
+    case "Bit Noise":
+      return { filterType: "bandpass", startCutoff: 0.6, peakCutoff: 1.45, releaseCutoff: 0.76, attack: 0.006, qScale: 1.5 };
+    case "Scan Pulse":
+      return { filterType: "highpass", startCutoff: 0.7, peakCutoff: 1.95, releaseCutoff: 0.82, attack: 0.004, qScale: 1.45 };
     case "Voice":
     case "Kecak":
     case "Ritual Chorus":
@@ -912,6 +931,86 @@ function createPhysicalNoise(audioContext, frequency, noteLength, time) {
     stop(stopTime) {
       noise.stop(stopTime);
       impulse.stop(stopTime);
+    },
+  };
+}
+
+function createDataClick(audioContext, frequency, noteLength, time) {
+  const output = audioContext.createGain();
+  const click = audioContext.createOscillator();
+  const tick = audioContext.createOscillator();
+  const clickGain = audioContext.createGain();
+  const tickGain = audioContext.createGain();
+  click.type = "square";
+  tick.type = "sine";
+  click.frequency.value = Math.max(1800, frequency * 16);
+  tick.frequency.value = Math.max(3200, frequency * 24);
+  clickGain.gain.setValueAtTime(0.95, time);
+  clickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.018);
+  tickGain.gain.setValueAtTime(0.5, time);
+  tickGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
+  click.connect(clickGain);
+  tick.connect(tickGain);
+  clickGain.connect(output);
+  tickGain.connect(output);
+  return {
+    output,
+    start(startTime) {
+      click.start(startTime);
+      tick.start(startTime);
+    },
+    stop(stopTime) {
+      click.stop(Math.min(stopTime, time + Math.min(noteLength, 0.05)));
+      tick.stop(Math.min(stopTime, time + Math.min(noteLength, 0.06)));
+    },
+  };
+}
+
+function createBitNoise(audioContext, frequency, noteLength, time) {
+  const buffer = audioContext.createBuffer(1, Math.ceil(audioContext.sampleRate * (noteLength + 0.1)), audioContext.sampleRate);
+  const data = buffer.getChannelData(0);
+  const stride = Math.max(2, Math.floor(audioContext.sampleRate / Math.max(80, frequency * 2)));
+  let current = 1;
+  for (let i = 0; i < data.length; i += 1) {
+    if (i % stride === 0) {
+      current = Math.random() > 0.5 ? 1 : -1;
+    }
+    data[i] = current;
+  }
+  const source = audioContext.createBufferSource();
+  source.buffer = buffer;
+  return {
+    output: source,
+    start(startTime) {
+      source.start(startTime);
+    },
+    stop(stopTime) {
+      source.stop(stopTime);
+    },
+  };
+}
+
+function createScanPulse(audioContext, frequency, time, slide, slideTime, lastFrequency) {
+  return createLayeredOscillators(audioContext, [
+    { type: "square", ratio: 1, gain: 0.62 },
+    { type: "sine", ratio: 8, gain: 0.16 },
+    { type: "sine", ratio: 16, gain: 0.1 },
+  ], frequency, time, slide, slideTime, lastFrequency);
+}
+
+function createWhiteBurst(audioContext, noteLength, time) {
+  const source = createNoiseSource(audioContext, noteLength);
+  const output = audioContext.createGain();
+  output.gain.setValueAtTime(1, time);
+  output.gain.exponentialRampToValueAtTime(0.0001, time + Math.min(noteLength, 0.08));
+  source.output.connect(output);
+  return {
+    output,
+    start(startTime) {
+      source.start(startTime);
+    },
+    stop(stopTime) {
+      source.stop(stopTime);
     },
   };
 }
@@ -1012,7 +1111,17 @@ function createDroneBed(audioContext, notes, controls) {
 
 function createDroneOscillatorSet(audioContext, note, voice, index) {
   const frequency = midiToFrequency(note);
-  const recipes = voice === "Ritual Chorus"
+  const recipes = voice === "Bit Noise"
+    ? [
+        { type: "square", ratio: 1, detune: -2 + index },
+        { type: "sine", ratio: 13, detune: 0 },
+      ]
+    : voice === "White Burst"
+      ? [
+          { type: "sine", ratio: 8, detune: -4 + index * 2 },
+          { type: "sine", ratio: 16, detune: 3 - index },
+        ]
+    : voice === "Ritual Chorus"
     ? [
         { type: "sawtooth", ratio: 1, detune: -8 + index * 2 },
         { type: "sine", ratio: 2, detune: 6 - index * 2 },
