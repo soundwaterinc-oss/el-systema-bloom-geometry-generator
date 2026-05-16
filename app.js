@@ -160,9 +160,9 @@ function populatePresets() {
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
   fillSelect(elements.visualPreset, Object.keys(visualPresets), "Chevron Weave");
   fillSelect(elements.scanPathPreset, Object.keys(scanPathPresets), "Horizontal Raster");
-  fillSelect(elements.bassVoice, ["Scan Pulse", "Data Click", "Gamelan Metallophone", "Industrial Metal"], "Scan Pulse");
-  fillSelect(elements.droneVoice, ["Bit Noise", "White Burst", "Ritual Chorus", "Gamelan Gong"], "Bit Noise");
-  fillSelect(elements.percussionVoice, ["Data Click", "White Burst", "Physical Noise", "Kecak"], "Data Click");
+  fillSelect(elements.bassVoice, ["Bronze Cluster", "Gamelan Metallophone", "Ritual Chorus", "Scan Pulse"], "Bronze Cluster");
+  fillSelect(elements.droneVoice, ["Ritual Chorus", "Gamelan Gong", "Bit Noise", "Pipe Organ"], "Ritual Chorus");
+  fillSelect(elements.percussionVoice, ["Bronze Cluster", "Gamelan Gong", "Ritual Chorus", "Sheet Metal"], "Bronze Cluster");
 }
 
 function fillSelect(select, items, initial) {
@@ -390,23 +390,22 @@ function buildDronePattern() {
 }
 
 function buildPercussionPattern() {
-  const rhythm = rhythmPresets[elements.rhythmPreset.value];
+  const scale = scalePresets[elements.scalePreset.value];
   const { edgeDensity, complexity } = state.features;
 
   return Array.from({ length: STEPS }, (_, step) => {
     const scan = getScanSampleForStep(step);
-    const extraHit = complexity > 0.2 && [3, 7, 11, 15].includes(step);
-    const scanHit = scan.edge > 0.28 || scan.contrast > 0.22;
-    const active = rhythm[step] === 1 || extraHit;
+    const degree = scale[(step + Math.floor(scan.brightness * scale.length)) % scale.length];
+    const active = step % 2 === 0 || scan.contrast > 0.24;
     return {
-      active: active || scanHit,
-      accent: (active || scanHit) && (step % 4 === 0 || edgeDensity > 0.1 || scan.edge > 0.35),
-      slide: false,
-      cutoff: Number(elements.cutoff.value) * (1.05 + scan.brightness * 0.55),
-      note: ROOT_MIDI + 24 + ((step % 3) * 2),
+      active,
+      accent: active && (step % 4 === 0 || edgeDensity > 0.1 || scan.edge > 0.35),
+      slide: scan.contrast > 0.32,
+      cutoff: Number(elements.cutoff.value) * (0.9 + scan.brightness * 0.7),
+      note: ROOT_MIDI + 24 + degree,
       voice: elements.percussionVoice.value,
-      level: Number(elements.percussionLevel.value),
-      durationScale: 0.55,
+      level: Number(elements.percussionLevel.value) * 0.72,
+      durationScale: 2.4 + complexity,
       pan: scan.pan,
     };
   });
