@@ -24,8 +24,11 @@ const voicePresets = {
   "Industrial Metal": { label: "Industrial Metal" },
   "Sheet Metal": { label: "Sheet Metal" },
   "Physical Noise": { label: "Physical Noise" },
+  "Bronze Cluster": { label: "Bronze Cluster" },
   "Gamelan Gong": { label: "Gamelan Gong" },
   "Gamelan Metallophone": { label: "Gamelan Metallophone" },
+  "Ritual Chorus": { label: "Ritual Chorus" },
+  "Bamboo Thump": { label: "Bamboo Thump" },
   "Pipe Organ": { label: "Pipe Organ" },
   "Fender Rhodes": { label: "Fender Rhodes" },
   Prophet: { label: "Prophet" },
@@ -59,6 +62,7 @@ const functionPresets = {
 const state = {
   audioContext: null,
   synths: null,
+  droneBed: null,
   isPlaying: false,
   stepIndex: 0,
   nextStepTime: 0,
@@ -108,6 +112,10 @@ const elements = {
   bassLevelValue: document.querySelector("#bassLevelValue"),
   droneLevel: document.querySelector("#droneLevel"),
   droneLevelValue: document.querySelector("#droneLevelValue"),
+  droneLfoRate: document.querySelector("#droneLfoRate"),
+  droneLfoRateValue: document.querySelector("#droneLfoRateValue"),
+  droneLfoDepth: document.querySelector("#droneLfoDepth"),
+  droneLfoDepthValue: document.querySelector("#droneLfoDepthValue"),
   percussionLevel: document.querySelector("#percussionLevel"),
   percussionLevelValue: document.querySelector("#percussionLevelValue"),
   densityValue: document.querySelector("#densityValue"),
@@ -124,9 +132,9 @@ function populatePresets() {
   fillSelect(elements.scalePreset, Object.keys(scalePresets), "Japanese In");
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
   fillSelect(elements.visualPreset, Object.keys(visualPresets), "Chevron Weave");
-  fillSelect(elements.bassVoice, ["Industrial Metal", "Acid Bass", "Gamelan Metallophone", "Prophet"], "Industrial Metal");
-  fillSelect(elements.droneVoice, ["Gamelan Gong", "Voice", "Pipe Organ", "Sheet Metal"], "Gamelan Gong");
-  fillSelect(elements.percussionVoice, ["Physical Noise", "Kecak", "Voice", "Sheet Metal"], "Physical Noise");
+  fillSelect(elements.bassVoice, ["Gamelan Metallophone", "Bronze Cluster", "Industrial Metal", "Acid Bass"], "Gamelan Metallophone");
+  fillSelect(elements.droneVoice, ["Ritual Chorus", "Gamelan Gong", "Voice", "Sheet Metal"], "Ritual Chorus");
+  fillSelect(elements.percussionVoice, ["Kecak", "Bamboo Thump", "Physical Noise", "Sheet Metal"], "Kecak");
 }
 
 function fillSelect(select, items, initial) {
@@ -147,7 +155,7 @@ function bindControls() {
     rebuildPattern();
   });
 
-  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "bassLevel", "droneLevel", "percussionLevel"].forEach((id) => {
+  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "bassLevel", "droneLevel", "droneLfoRate", "droneLfoDepth", "percussionLevel"].forEach((id) => {
     elements[id].addEventListener("input", syncLabels);
   });
 
@@ -165,7 +173,13 @@ function syncLabels() {
   elements.slideValue.textContent = Number(elements.slide.value).toFixed(2);
   elements.bassLevelValue.textContent = Number(elements.bassLevel.value).toFixed(2);
   elements.droneLevelValue.textContent = Number(elements.droneLevel.value).toFixed(2);
+  elements.droneLfoRateValue.textContent = Number(elements.droneLfoRate.value).toFixed(2);
+  elements.droneLfoDepthValue.textContent = elements.droneLfoDepth.value;
   elements.percussionLevelValue.textContent = Number(elements.percussionLevel.value).toFixed(2);
+
+  if (state.droneBed) {
+    state.droneBed.update(getDroneControls());
+  }
 }
 
 async function startAudio() {
@@ -196,10 +210,12 @@ async function toggleTransport() {
   if (state.isPlaying) {
     state.stepIndex = 0;
     state.nextStepTime = state.audioContext.currentTime + 0.08;
+    startDroneBed();
     state.schedulerId = window.setInterval(schedule, 25);
   } else {
     window.clearInterval(state.schedulerId);
     state.schedulerId = null;
+    stopDroneBed();
     renderSteps();
   }
 }
@@ -208,7 +224,6 @@ function schedule() {
   const lookAhead = 0.12;
   while (state.nextStepTime < state.audioContext.currentTime + lookAhead) {
     playLayerStep("bass", state.nextStepTime);
-    playLayerStep("drone", state.nextStepTime);
     playLayerStep("percussion", state.nextStepTime);
     renderSteps(state.stepIndex);
     state.nextStepTime += getStepDuration();
@@ -231,6 +246,17 @@ function getSynthControls() {
   };
 }
 
+function getDroneControls() {
+  return {
+    cutoff: Number(elements.cutoff.value),
+    resonance: Number(elements.resonance.value),
+    level: Number(elements.droneLevel.value),
+    lfoRate: Number(elements.droneLfoRate.value),
+    lfoDepth: Number(elements.droneLfoDepth.value),
+    voice: elements.droneVoice.value,
+  };
+}
+
 function playLayerStep(layer, time) {
   const step = state.layerPatterns[layer][state.stepIndex];
   if (step && step.active) {
@@ -244,6 +270,9 @@ function rebuildPattern() {
   state.layerPatterns = buildLayerPatterns();
   syncFeatureLabels();
   renderSteps();
+  if (state.isPlaying) {
+    restartDroneBed();
+  }
 }
 
 function buildLayerPatterns() {
@@ -287,19 +316,18 @@ function buildDronePattern() {
   const scale = scalePresets[elements.scalePreset.value];
   const root = ROOT_MIDI + 12 + scale[0];
   const fifth = ROOT_MIDI + 12 + (scale[Math.min(3, scale.length - 1)] ?? 7);
-  const { density, complexity } = state.features;
+  const third = ROOT_MIDI + 12 + (scale[Math.min(2, scale.length - 1)] ?? 5);
 
   return Array.from({ length: STEPS }, (_, step) => {
-    const trigger = step % 8 === 0 || (complexity > 0.2 && step === 12);
     return {
-      active: trigger,
+      active: true,
       accent: false,
-      slide: density > 0.45,
+      slide: false,
       cutoff: Number(elements.cutoff.value) * 0.72,
-      note: step % 16 === 0 ? root : fifth,
+      note: [root, fifth, third, fifth][step % 4],
       voice: elements.droneVoice.value,
       level: Number(elements.droneLevel.value),
-      durationScale: 8,
+      durationScale: 1,
     };
   });
 }
@@ -734,6 +762,13 @@ function createVoiceEngine(audioContext) {
 
 function createVoiceSource(audioContext, voice, frequency, time, noteLength, slide, slideTime, lastFrequency) {
   switch (voice) {
+    case "Bronze Cluster":
+      return createLayeredOscillators(audioContext, [
+        { type: "sine", ratio: 1, gain: 0.42 },
+        { type: "sine", ratio: 1.27, gain: 0.24 },
+        { type: "sine", ratio: 1.78, gain: 0.18 },
+        { type: "sine", ratio: 2.41, gain: 0.16 },
+      ], frequency, time, slide, slideTime, lastFrequency);
     case "Industrial Metal":
       return createLayeredOscillators(audioContext, [
         { type: "sawtooth", ratio: 1, gain: 0.42 },
@@ -764,6 +799,10 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
         { type: "sine", ratio: 2.03, gain: 0.18 },
         { type: "sine", ratio: 3.76, gain: 0.12 },
       ], frequency, time, slide, slideTime, lastFrequency);
+    case "Ritual Chorus":
+      return createRitualChorus(audioContext, frequency, time, slide, slideTime, lastFrequency);
+    case "Bamboo Thump":
+      return createBambooThump(audioContext, frequency, noteLength, time);
     case "Pipe Organ":
       return createLayeredOscillators(audioContext, [
         { type: "sine", ratio: 1, gain: 0.7 },
@@ -796,11 +835,13 @@ function getVoiceProfile(voice) {
     case "Industrial Metal":
     case "Sheet Metal":
     case "Gamelan Metallophone":
+    case "Bronze Cluster":
       return { filterType: "highpass", startCutoff: 0.42, peakCutoff: 1.8, releaseCutoff: 0.7, attack: 0.008, qScale: 1.35 };
     case "Physical Noise":
       return { filterType: "bandpass", startCutoff: 0.8, peakCutoff: 1.7, releaseCutoff: 0.72, attack: 0.004, qScale: 1.6 };
     case "Voice":
     case "Kecak":
+    case "Ritual Chorus":
       return { filterType: "bandpass", startCutoff: 0.7, peakCutoff: 1.35, releaseCutoff: 0.82, attack: 0.01, qScale: 1.15 };
     case "Gamelan Gong":
       return { filterType: "lowpass", startCutoff: 0.45, peakCutoff: 1.15, releaseCutoff: 0.55, attack: 0.02, qScale: 0.8 };
@@ -814,6 +855,7 @@ function createLayeredOscillators(audioContext, layers, frequency, time, slide, 
   const nodes = layers.map((layer) => {
     const oscillator = audioContext.createOscillator();
     oscillator.type = layer.type;
+    oscillator.detune.value = layer.detune ?? 0;
     const gain = audioContext.createGain();
     gain.gain.value = layer.gain;
     oscillator.connect(gain);
@@ -872,6 +914,127 @@ function createPhysicalNoise(audioContext, frequency, noteLength, time) {
       impulse.stop(stopTime);
     },
   };
+}
+
+function createBambooThump(audioContext, frequency, noteLength, time) {
+  const body = createLayeredOscillators(audioContext, [
+    { type: "sine", ratio: 0.5, gain: 0.6 },
+    { type: "triangle", ratio: 1, gain: 0.24 },
+  ], frequency, time, false, 0, frequency);
+  const knock = createPhysicalNoise(audioContext, frequency * 0.7, Math.min(noteLength, 0.18), time);
+  const output = audioContext.createGain();
+  body.output.connect(output);
+  knock.output.connect(output);
+  return {
+    output,
+    start(startTime) {
+      body.start(startTime);
+      knock.start(startTime);
+    },
+    stop(stopTime) {
+      body.stop(stopTime);
+      knock.stop(stopTime);
+    },
+  };
+}
+
+function createRitualChorus(audioContext, frequency, time, slide, slideTime, lastFrequency) {
+  return createLayeredOscillators(audioContext, [
+    { type: "sawtooth", ratio: 1, gain: 0.24, detune: -8 },
+    { type: "sawtooth", ratio: 1, gain: 0.24, detune: 9 },
+    { type: "triangle", ratio: 1.5, gain: 0.18, detune: -5 },
+    { type: "sine", ratio: 2, gain: 0.14, detune: 4 },
+  ], frequency, time, slide, slideTime, lastFrequency);
+}
+
+function startDroneBed() {
+  if (!state.audioContext) return;
+  stopDroneBed();
+  const scale = scalePresets[elements.scalePreset.value];
+  const root = ROOT_MIDI + 12 + scale[0];
+  const fifth = ROOT_MIDI + 12 + (scale[Math.min(3, scale.length - 1)] ?? 7);
+  const third = ROOT_MIDI + 12 + (scale[Math.min(2, scale.length - 1)] ?? 5);
+  state.droneBed = createDroneBed(state.audioContext, [root, third, fifth], getDroneControls());
+  state.droneBed.start(state.audioContext.currentTime);
+}
+
+function stopDroneBed() {
+  if (!state.droneBed || !state.audioContext) return;
+  state.droneBed.stop(state.audioContext.currentTime + 0.08);
+  state.droneBed = null;
+}
+
+function restartDroneBed() {
+  stopDroneBed();
+  startDroneBed();
+}
+
+function createDroneBed(audioContext, notes, controls) {
+  const output = audioContext.createGain();
+  output.gain.value = controls.level;
+  const filter = audioContext.createBiquadFilter();
+  filter.type = controls.voice === "Ritual Chorus" ? "bandpass" : "lowpass";
+  filter.frequency.value = controls.cutoff * 0.78;
+  filter.Q.value = controls.resonance * 0.75;
+  output.connect(filter);
+  filter.connect(audioContext.destination);
+
+  const oscillators = notes.flatMap((note, index) => createDroneOscillatorSet(audioContext, note, controls.voice, index));
+  oscillators.forEach((node) => node.connect(output));
+
+  const lfo = audioContext.createOscillator();
+  const lfoGain = audioContext.createGain();
+  lfo.frequency.value = controls.lfoRate;
+  lfoGain.gain.value = controls.lfoDepth;
+  lfo.connect(lfoGain);
+  lfoGain.connect(filter.frequency);
+
+  return {
+    start(time) {
+      oscillators.forEach((node) => node.start(time));
+      lfo.start(time);
+    },
+    stop(time) {
+      output.gain.cancelScheduledValues(time);
+      output.gain.setTargetAtTime(0.0001, time, 0.06);
+      oscillators.forEach((node) => node.stop(time + 0.2));
+      lfo.stop(time + 0.2);
+    },
+    update(nextControls) {
+      output.gain.setTargetAtTime(nextControls.level, audioContext.currentTime, 0.05);
+      lfo.frequency.setTargetAtTime(nextControls.lfoRate, audioContext.currentTime, 0.05);
+      lfoGain.gain.setTargetAtTime(nextControls.lfoDepth, audioContext.currentTime, 0.05);
+      filter.frequency.setTargetAtTime(nextControls.cutoff * 0.78, audioContext.currentTime, 0.05);
+      filter.Q.setTargetAtTime(nextControls.resonance * 0.75, audioContext.currentTime, 0.05);
+    },
+  };
+}
+
+function createDroneOscillatorSet(audioContext, note, voice, index) {
+  const frequency = midiToFrequency(note);
+  const recipes = voice === "Ritual Chorus"
+    ? [
+        { type: "sawtooth", ratio: 1, detune: -8 + index * 2 },
+        { type: "sine", ratio: 2, detune: 6 - index * 2 },
+      ]
+    : voice === "Gamelan Gong"
+      ? [
+          { type: "sine", ratio: 0.5, detune: 0 },
+          { type: "sine", ratio: 0.76, detune: 0 },
+          { type: "sine", ratio: 1.04, detune: 0 },
+        ]
+      : [
+          { type: "sine", ratio: 1, detune: -4 + index * 4 },
+          { type: "triangle", ratio: 2, detune: 3 - index * 3 },
+        ];
+
+  return recipes.map((recipe) => {
+    const oscillator = audioContext.createOscillator();
+    oscillator.type = recipe.type;
+    oscillator.frequency.value = frequency * recipe.ratio;
+    oscillator.detune.value = recipe.detune;
+    return oscillator;
+  });
 }
 
 function createFmSource(audioContext, frequency, time, slide, slideTime, lastFrequency) {
