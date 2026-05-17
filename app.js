@@ -41,6 +41,7 @@ const voicePresets = {
 };
 
 const visualPresets = {
+  Autogenesis: "autogenesis",
   "Cell Vector": "cell-vector",
   "Uploaded Image": "uploaded",
   "Chevron Weave": "woven",
@@ -74,8 +75,13 @@ const functionPresets = {
 
 const state = {
   audioContext: null,
+  masterBus: null,
+  analyser: null,
+  analyserData: null,
   synths: null,
   droneBed: null,
+  autogenesisActive: false,
+  autogenesisId: null,
   uploadedImage: null,
   uploadedImageUrl: null,
   defaultCellImage: null,
@@ -105,6 +111,7 @@ const state = {
 const elements = {
   audioToggle: document.querySelector("#audioToggle"),
   transportToggle: document.querySelector("#transportToggle"),
+  autogenesisToggle: document.querySelector("#autogenesisToggle"),
   mutateButton: document.querySelector("#mutateButton"),
   bpm: document.querySelector("#bpm"),
   bpmValue: document.querySelector("#bpmValue"),
@@ -196,6 +203,7 @@ function fillSelect(select, items, initial) {
 function bindControls() {
   elements.audioToggle.addEventListener("click", startAudio);
   elements.transportToggle.addEventListener("click", toggleTransport);
+  elements.autogenesisToggle.addEventListener("click", toggleAutogenesis);
   elements.mutateButton.addEventListener("click", () => {
     mutateGeometry();
     rebuildPattern();
@@ -251,6 +259,14 @@ function syncLabels() {
 async function startAudio() {
   if (!state.audioContext) {
     state.audioContext = new AudioContext();
+    state.masterBus = state.audioContext.createGain();
+    state.masterBus.gain.value = 0.9;
+    state.analyser = state.audioContext.createAnalyser();
+    state.analyser.fftSize = 2048;
+    state.analyser.smoothingTimeConstant = 0.82;
+    state.analyserData = new Uint8Array(state.analyser.frequencyBinCount);
+    state.masterBus.connect(state.analyser);
+    state.analyser.connect(state.audioContext.destination);
     state.synths = {
       bass: createVoiceEngine(state.audioContext, "bass"),
       drone: createVoiceEngine(state.audioContext, "drone"),
@@ -361,6 +377,57 @@ function rebuildPattern(restartDrone = false) {
   }
 }
 
+function toggleAutogenesis() {
+  state.autogenesisActive = !state.autogenesisActive;
+  elements.autogenesisToggle.textContent = state.autogenesisActive ? "Stop Autogenesis" : "Start Autogenesis";
+  if (state.autogenesisActive) {
+    elements.visualPreset.value = "Autogenesis";
+    runAutogenesisCycle();
+    state.autogenesisId = window.setInterval(runAutogenesisCycle, 3200);
+  } else {
+    window.clearInterval(state.autogenesisId);
+    state.autogenesisId = null;
+  }
+}
+
+function runAutogenesisCycle() {
+  if (!state.analyser) return;
+  const audioFeatures = getMasterAudioFeatures();
+  evolveGeometryFromAudio(audioFeatures);
+  rebuildPattern(false);
+}
+
+function getMasterAudioFeatures() {
+  state.analyser.getByteFrequencyData(state.analyserData);
+  let total = 0;
+  let weighted = 0;
+  let roughness = 0;
+  for (let i = 0; i < state.analyserData.length; i += 1) {
+    const value = state.analyserData[i] / 255;
+    total += value;
+    weighted += value * i;
+    if (i > 0) {
+      roughness += Math.abs(value - (state.analyserData[i - 1] / 255));
+    }
+  }
+  const loudness = total / state.analyserData.length;
+  const brightness = total > 0 ? weighted / total / state.analyserData.length : 0;
+  return {
+    loudness: clamp(loudness * 3, 0, 1),
+    brightness: clamp(brightness * 2.2, 0, 1),
+    roughness: clamp(roughness / state.analyserData.length * 7, 0, 1),
+  };
+}
+
+function evolveGeometryFromAudio(audio) {
+  state.geometrySeeds = {
+    lanes: Math.round(5 + audio.brightness * 10 + audio.roughness * 4),
+    spacing: Math.round(34 - audio.loudness * 12 - audio.brightness * 8),
+    angleShift: clamp(0.08 + audio.roughness * 0.24 + audio.brightness * 0.08, 0.08, 0.34),
+    cells: Math.round(10 + audio.loudness * 10 + audio.roughness * 12),
+  };
+}
+
 function buildLayerPatterns() {
   return {
     bass: buildBassPattern(),
@@ -451,6 +518,11 @@ function normalizedStepValue(step, a, b) {
 }
 
 function drawGeometry(withOverlay = true) {
+  if (visualPresets[elements.visualPreset.value] === "autogenesis") {
+    drawAutogenesisField();
+    if (withOverlay) drawScanOverlay();
+    return;
+  }
   if (visualPresets[elements.visualPreset.value] === "cell-vector" && state.defaultCellImage) {
     drawImageToCanvas(state.defaultCellImage);
     if (withOverlay) drawScanOverlay();
@@ -654,6 +726,36 @@ function drawPlantCells() {
     ctx2d.beginPath();
     ctx2d.arc(x, y, radius * 0.16, 0, Math.PI * 2);
     ctx2d.fill();
+  }
+}
+
+function drawAutogenesisField() {
+  const { width, height } = elements.canvas;
+  const { lanes, spacing, angleShift, cells } = state.geometrySeeds;
+  ctx2d.clearRect(0, 0, width, height);
+  ctx2d.fillStyle = "#0b0b0c";
+  ctx2d.fillRect(0, 0, width, height);
+
+  ctx2d.strokeStyle = "rgba(244, 244, 238, 0.92)";
+  ctx2d.lineWidth = 2;
+  for (let lane = 0; lane < lanes; lane += 1) {
+    const yBase = (lane / Math.max(1, lanes - 1)) * height;
+    ctx2d.beginPath();
+    for (let x = 0; x <= width; x += spacing) {
+      const y = yBase + Math.sin(x * 0.018 + lane * 0.7) * spacing * angleShift * 6;
+      if (x === 0) ctx2d.moveTo(x, y);
+      else ctx2d.lineTo(x, y);
+    }
+    ctx2d.stroke();
+  }
+
+  for (let i = 0; i < cells; i += 1) {
+    const x = randomSeeded(i * 19.7 + lanes) * width;
+    const y = randomSeeded(i * 31.1 + spacing) * height;
+    const radius = 8 + randomSeeded(i * 47.3 + cells) * (spacing * 1.8);
+    ctx2d.beginPath();
+    ctx2d.arc(x, y, radius, 0, Math.PI * 2);
+    ctx2d.stroke();
   }
 }
 
@@ -994,7 +1096,7 @@ function createVoiceEngine(audioContext, layer) {
   const output = audioContext.createGain();
   output.gain.value = 0.7;
   filter.connect(output);
-  output.connect(audioContext.destination);
+  output.connect(state.masterBus);
 
   let lastFrequency = 110;
 
@@ -1399,7 +1501,7 @@ function createDroneBed(audioContext, notes, controls) {
   filter.Q.value = controls.resonance * 0.75;
   output.connect(shaper);
   shaper.connect(filter);
-  filter.connect(audioContext.destination);
+  filter.connect(state.masterBus);
 
   const oscillators = notes.flatMap((note, index) => createDroneOscillatorSet(audioContext, note, controls.voice, index, controls.spread));
   oscillators.forEach((node) => node.connect(output));
