@@ -365,7 +365,7 @@ function buildBassPattern() {
       cutoff: Number(elements.cutoff.value) + cutoffMod,
       note: ROOT_MIDI + scaleNote + octaveOffset,
       voice: elements.bassVoice.value,
-      level: Number(elements.bassLevel.value),
+      level: Number(elements.bassLevel.value) * 1.18,
       pan: scan.pan,
     };
   });
@@ -1183,7 +1183,7 @@ function createSustainedTexture(audioContext, noteLength, amount) {
 function createSoftClipCurve(amount) {
   const samples = 256;
   const curve = new Float32Array(samples);
-  const drive = 1 + amount * 6;
+  const drive = 1 + amount * 9;
   for (let i = 0; i < samples; i += 1) {
     const x = (i / (samples - 1)) * 2 - 1;
     curve[i] = Math.tanh(x * drive) / Math.tanh(drive);
