@@ -162,8 +162,8 @@ function populatePresets() {
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
   fillSelect(elements.visualPreset, Object.keys(visualPresets), "Cell Vector");
   fillSelect(elements.scanPathPreset, Object.keys(scanPathPresets), "Horizontal Raster");
-  fillSelect(elements.bassVoice, ["Bronze Cluster", "Gamelan Metallophone", "Ritual Chorus", "Scan Pulse"], "Bronze Cluster");
-  fillSelect(elements.droneVoice, ["Ritual Chorus", "Gamelan Gong", "Bit Noise", "Pipe Organ"], "Ritual Chorus");
+  fillSelect(elements.bassVoice, ["Bronze Cluster", "Gamelan Metallophone", "Ritual Chorus", "Pipe Organ"], "Bronze Cluster");
+  fillSelect(elements.droneVoice, ["Ritual Chorus", "Gamelan Gong", "Pipe Organ", "Fender Rhodes"], "Ritual Chorus");
   fillSelect(elements.percussionVoice, ["Bronze Cluster", "Gamelan Gong", "Ritual Chorus", "Sheet Metal"], "Bronze Cluster");
 }
 
@@ -398,10 +398,10 @@ function buildPercussionPattern() {
   return Array.from({ length: STEPS }, (_, step) => {
     const scan = getScanSampleForStep(step);
     const degree = scale[(step + Math.floor(scan.brightness * scale.length)) % scale.length];
-    const active = step % 2 === 0 || scan.contrast > 0.24;
+    const active = true;
     return {
       active,
-      accent: active && (step % 4 === 0 || edgeDensity > 0.1 || scan.edge > 0.35),
+      accent: step % 4 === 0 || edgeDensity > 0.1 || scan.edge > 0.35,
       slide: scan.contrast > 0.32,
       cutoff: Number(elements.cutoff.value) * (0.9 + scan.brightness * 0.7),
       note: ROOT_MIDI + 24 + degree,
@@ -894,7 +894,7 @@ function renderSteps(currentStep = -1) {
   [
     ["bass", "Bass"],
     ["drone", "Drone"],
-    ["percussion", "Vocal Percussion"],
+    ["percussion", "Upper Harmony"],
   ].forEach(([key, label]) => {
     const row = document.createElement("section");
     row.className = "layer-row";

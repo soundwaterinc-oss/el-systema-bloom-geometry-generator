@@ -1,6 +1,6 @@
-# EL SYSTEMA ACID Geometry Generator
+# Geometry Scanning Generator
 
-Minimal plain HTML/CSS/JS acid bass sequencer driven by geometry features.
+Plain HTML/CSS/JS image scanning instrument for sustained generative harmony.
 
 ## Run locally
 
