@@ -25,14 +25,15 @@ body {
 }
 
 .app {
-  width: min(1180px, calc(100% - 32px));
-  margin: 24px auto 48px;
+  width: min(1280px, calc(100% - 32px));
+  margin: 16px auto 36px;
 }
 
 .layout {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: minmax(560px, 1fr) minmax(360px, 460px);
   gap: 18px;
+  align-items: start;
 }
 
 .panel {
@@ -48,7 +49,7 @@ body {
   align-items: end;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .eyebrow,
@@ -73,10 +74,69 @@ h1 {
 }
 
 .hero-actions,
-.controls,
 .layer-controls {
   display: grid;
   gap: 14px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.controls > .tab-block,
+.controls > .layer-controls {
+  grid-column: 1 / -1;
+}
+
+.layer-controls {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.tab-block {
+  display: grid;
+  gap: 8px;
+}
+
+.tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.tab-row.compact {
+  gap: 6px;
+}
+
+.tab-button {
+  width: auto;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+}
+
+.tab-button.is-active {
+  color: #101010;
+  background: var(--active);
+  border-color: var(--active);
+}
+
+.root-tabs {
+  grid-template-columns: repeat(3, 1fr);
+  align-items: start;
+}
+
+.root-tabs > span {
+  grid-column: 1 / -1;
+}
+
+.root-tabs small {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
 }
 
 button,
@@ -126,6 +186,10 @@ canvas {
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
     #0c1218;
   border: 1px solid var(--line);
+}
+
+#geometryCanvas {
+  aspect-ratio: 2 / 3;
 }
 
 #luminanceCanvas {
@@ -218,6 +282,12 @@ canvas {
 
   .hero-actions {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .controls,
+  .layer-controls,
+  .root-tabs {
+    grid-template-columns: 1fr;
   }
 }
 

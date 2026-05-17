@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Geometry Scanning Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260517-11" />
+    <link rel="stylesheet" href="styles.css?v=20260517-12" />
   </head>
   <body>
     <main class="app">
@@ -15,7 +15,7 @@
           <p class="subtle">
             Image scanning shapes sustained harmony, tone, and spatial motion.
           </p>
-          <p class="build-tag">Build 1abadae</p>
+          <p class="build-tag">Build scale-roots</p>
         </div>
         <div class="hero-actions">
           <button id="audioToggle">Start Audio</button>
@@ -38,10 +38,26 @@
             <select id="rhythmPreset"></select>
           </label>
 
-          <label>
-            <span>Scale preset</span>
-            <select id="scalePreset"></select>
-          </label>
+          <section class="tab-block">
+            <span>Scale</span>
+            <div id="scaleTabs" class="tab-row"></div>
+          </section>
+
+          <section class="tab-block root-tabs">
+            <span>Root degree</span>
+            <div>
+              <small>OSC1</small>
+              <div id="osc1RootTabs" class="tab-row compact"></div>
+            </div>
+            <div>
+              <small>Drone</small>
+              <div id="droneRootTabs" class="tab-row compact"></div>
+            </div>
+            <div>
+              <small>OSC2</small>
+              <div id="osc2RootTabs" class="tab-row compact"></div>
+            </div>
+          </section>
 
           <label>
             <span>Function preset</span>
@@ -120,6 +136,11 @@
               <span>Edge brightness</span>
               <input id="clickAmount" type="range" min="0" max="1.6" step="0.01" value="0.72" />
               <strong id="clickAmountValue">0.72</strong>
+            </label>
+            <label>
+              <span>Harmonics</span>
+              <input id="harmonics" type="range" min="0" max="1.6" step="0.01" value="1" />
+              <strong id="harmonicsValue">1.00</strong>
             </label>
           </div>
 
@@ -205,8 +226,8 @@
         </div>
 
         <div class="panel visual">
-          <canvas id="geometryCanvas" width="640" height="420"></canvas>
-          <canvas id="luminanceCanvas" width="640" height="120"></canvas>
+          <canvas id="geometryCanvas" width="480" height="720"></canvas>
+          <canvas id="luminanceCanvas" width="480" height="120"></canvas>
           <div class="feature-grid">
             <div>
               <span>Density</span>
@@ -226,6 +247,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260517-11"></script>
+    <script src="app.js?v=20260517-12"></script>
   </body>
 </html>

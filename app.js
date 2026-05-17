@@ -10,14 +10,18 @@ const rhythmPresets = {
 };
 
 const scalePresets = {
-  "Japanese In": [0, 1, 5, 7, 8],
-  "Balinese Pelog": [0, 1, 3, 7, 8],
-  "Javanese Slendro": [0, 2, 5, 7, 10],
-  "Arabic Hijaz": [0, 1, 4, 5, 7, 8, 11],
-  "Raga Bhairav": [0, 1, 4, 5, 7, 8, 11],
-  "Andean Pentatonic": [0, 3, 5, 7, 10],
-  "Ethiopian Tizita": [0, 2, 3, 7, 9],
+  "Japanese In": semitoneScale([0, 1, 5, 7, 8]),
+  "Balinese Pelog": semitoneScale([0, 1, 3, 7, 8]),
+  "Javanese Slendro": semitoneScale([0, 2, 5, 7, 10]),
+  "Arabic Hijaz": semitoneScale([0, 1, 4, 5, 7, 8, 11]),
+  "Raga Bhairav": semitoneScale([0, 1, 4, 5, 7, 8, 11]),
+  "Andean Pentatonic": semitoneScale([0, 3, 5, 7, 10]),
+  "Ethiopian Tizita": semitoneScale([0, 2, 3, 7, 9]),
+  "1/f Harmonic": { ratios: [1, 9 / 8, 6 / 5, 4 / 3, 3 / 2, 8 / 5, 16 / 9] },
+  "Golden Ratio": { ratios: [1, 1.118, 1.272, 1.414, 1.618, 1.809, 1.941] },
 };
+
+const degreeLabels = ["I", "II", "III", "IV", "V", "VI", "VII"];
 
 const voicePresets = {
   "Acid Bass": { label: "Acid Bass" },
@@ -119,6 +123,12 @@ const state = {
     edgeDensity: 0,
     complexity: 0,
   },
+  selectedScale: "Japanese In",
+  rootDegrees: {
+    bass: 0,
+    drone: 4,
+    percussion: 2,
+  },
 };
 
 const elements = {
@@ -129,7 +139,10 @@ const elements = {
   bpm: document.querySelector("#bpm"),
   bpmValue: document.querySelector("#bpmValue"),
   rhythmPreset: document.querySelector("#rhythmPreset"),
-  scalePreset: document.querySelector("#scalePreset"),
+  scaleTabs: document.querySelector("#scaleTabs"),
+  osc1RootTabs: document.querySelector("#osc1RootTabs"),
+  droneRootTabs: document.querySelector("#droneRootTabs"),
+  osc2RootTabs: document.querySelector("#osc2RootTabs"),
   functionPreset: document.querySelector("#functionPreset"),
   visualPreset: document.querySelector("#visualPreset"),
   imageInput: document.querySelector("#imageInput"),
@@ -152,6 +165,8 @@ const elements = {
   noiseMixValue: document.querySelector("#noiseMixValue"),
   clickAmount: document.querySelector("#clickAmount"),
   clickAmountValue: document.querySelector("#clickAmountValue"),
+  harmonics: document.querySelector("#harmonics"),
+  harmonicsValue: document.querySelector("#harmonicsValue"),
   bassVoice: document.querySelector("#bassVoice"),
   droneVoice: document.querySelector("#droneVoice"),
   percussionVoice: document.querySelector("#percussionVoice"),
@@ -194,7 +209,12 @@ const luminanceCtx = elements.luminanceCanvas.getContext("2d");
 
 function populatePresets() {
   fillSelect(elements.rhythmPreset, Object.keys(rhythmPresets), "Kecak Cycle");
-  fillSelect(elements.scalePreset, Object.keys(scalePresets), "Japanese In");
+  fillTabs(elements.scaleTabs, Object.keys(scalePresets), state.selectedScale, (value) => {
+    state.selectedScale = value;
+    renderRootTabs();
+    rebuildPattern(true);
+  });
+  renderRootTabs();
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
   fillSelect(elements.visualPreset, Object.keys(visualPresets), "Cell Vector");
   fillSelect(elements.scanPathPreset, Object.keys(scanPathPresets), "Horizontal Raster");
@@ -213,6 +233,36 @@ function fillSelect(select, items, initial) {
   });
 }
 
+function fillTabs(container, items, activeValue, onSelect) {
+  container.innerHTML = "";
+  items.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `tab-button${item === activeValue ? " is-active" : ""}`;
+    button.textContent = item;
+    button.addEventListener("click", () => onSelect(item));
+    container.appendChild(button);
+  });
+}
+
+function renderRootTabs() {
+  const degreeCount = getCurrentScale().ratios.length;
+  const labels = degreeLabels.slice(0, degreeCount);
+  fillDegreeTabs(elements.osc1RootTabs, "bass", labels);
+  fillDegreeTabs(elements.droneRootTabs, "drone", labels);
+  fillDegreeTabs(elements.osc2RootTabs, "percussion", labels);
+}
+
+function fillDegreeTabs(container, layer, labels) {
+  const safeDegree = state.rootDegrees[layer] % labels.length;
+  state.rootDegrees[layer] = safeDegree;
+  fillTabs(container, labels, labels[safeDegree], (label) => {
+    state.rootDegrees[layer] = labels.indexOf(label);
+    renderRootTabs();
+    rebuildPattern(true);
+  });
+}
+
 function bindControls() {
   elements.audioToggle.addEventListener("click", startAudio);
   elements.transportToggle.addEventListener("click", toggleTransport);
@@ -223,10 +273,10 @@ function bindControls() {
   });
   elements.imageInput.addEventListener("change", handleImageUpload);
 
-  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "toneBrightness", "grit", "noiseMix", "clickAmount", "bassLevel", "osc1Drive", "osc1Spread", "osc1Motion", "droneLevel", "droneDrive", "droneSpread", "droneLfoRate", "droneLfoDepth", "percussionLevel", "osc2Drive", "osc2Spread", "osc2Motion"].forEach((id) => {
+  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "toneBrightness", "grit", "noiseMix", "clickAmount", "harmonics", "bassLevel", "osc1Drive", "osc1Spread", "osc1Motion", "droneLevel", "droneDrive", "droneSpread", "droneLfoRate", "droneLfoDepth", "percussionLevel", "osc2Drive", "osc2Spread", "osc2Motion"].forEach((id) => {
     elements[id].addEventListener("input", () => {
       syncLabels();
-      rebuildPattern(false);
+      rebuildPattern(id === "harmonics");
     });
   });
 
@@ -234,7 +284,7 @@ function bindControls() {
     elements[id].addEventListener("change", () => rebuildPattern(false));
   });
 
-  ["bassVoice", "percussionVoice", "droneVoice", "scalePreset"].forEach((id) => {
+  ["bassVoice", "percussionVoice", "droneVoice"].forEach((id) => {
     elements[id].addEventListener("change", () => rebuildPattern(true));
   });
 }
@@ -250,6 +300,7 @@ function syncLabels() {
   elements.gritValue.textContent = Number(elements.grit.value).toFixed(2);
   elements.noiseMixValue.textContent = Number(elements.noiseMix.value).toFixed(2);
   elements.clickAmountValue.textContent = Number(elements.clickAmount.value).toFixed(2);
+  elements.harmonicsValue.textContent = Number(elements.harmonics.value).toFixed(2);
   elements.bassLevelValue.textContent = Number(elements.bassLevel.value).toFixed(2);
   elements.osc1DriveValue.textContent = Number(elements.osc1Drive.value).toFixed(2);
   elements.osc1SpreadValue.textContent = elements.osc1Spread.value;
@@ -358,6 +409,7 @@ function getSynthControls() {
     grit: Number(elements.grit.value),
     noiseMix: Number(elements.noiseMix.value),
     clickAmount: Number(elements.clickAmount.value),
+    harmonics: Number(elements.harmonics.value),
     osc1Drive: Number(elements.osc1Drive.value),
     osc1Spread: Number(elements.osc1Spread.value),
     osc1Motion: Number(elements.osc1Motion.value),
@@ -365,6 +417,29 @@ function getSynthControls() {
     osc2Spread: Number(elements.osc2Spread.value),
     osc2Motion: Number(elements.osc2Motion.value),
   };
+}
+
+function semitoneScale(steps) {
+  return { ratios: steps.map((step) => 2 ** (step / 12)) };
+}
+
+function getCurrentScale() {
+  return scalePresets[state.selectedScale];
+}
+
+function getScaleRatio(degree) {
+  const ratios = getCurrentScale().ratios;
+  const octave = Math.floor(degree / ratios.length);
+  const index = ((degree % ratios.length) + ratios.length) % ratios.length;
+  return ratios[index] * (2 ** octave);
+}
+
+function degreeToFrequency(baseMidi, degree) {
+  return midiToFrequency(baseMidi) * getScaleRatio(degree);
+}
+
+function degreeToMidiApprox(baseMidi, degree) {
+  return Math.round(baseMidi + 12 * Math.log2(getScaleRatio(degree)));
 }
 
 function getDroneControls() {
@@ -479,7 +554,7 @@ function buildLayerPatterns() {
 }
 
 function buildBassPattern() {
-  const scale = scalePresets[elements.scalePreset.value];
+  const scale = getCurrentScale();
   const fn = functionPresets[elements.functionPreset.value];
   const { density, edgeDensity, complexity } = state.features;
   const octaveOffset = density > 0.53 ? 12 : 0;
@@ -491,7 +566,8 @@ function buildBassPattern() {
       + Math.floor(density * 2.5)
       + Math.floor(scan.brightness * 3)
       + (step % 3 === 0 ? 1 : 0);
-    const scaleNote = scale[((degreeIndex % scale.length) + scale.length) % scale.length];
+    const relativeDegree = ((degreeIndex % scale.ratios.length) + scale.ratios.length) % scale.ratios.length;
+    const degree = state.rootDegrees.bass + relativeDegree;
     const accentThreshold = 0.28 + edgeDensity * 0.42;
     const slideThreshold = 0.35 + complexity * 0.32;
     const accent = normalizedStepValue(step, density, edgeDensity) > accentThreshold;
@@ -503,7 +579,8 @@ function buildBassPattern() {
       accent,
       slide,
       cutoff: Number(elements.cutoff.value) + cutoffMod,
-      note: ROOT_MIDI + scaleNote + octaveOffset,
+      note: degreeToMidiApprox(ROOT_MIDI + octaveOffset, degree),
+      frequency: degreeToFrequency(ROOT_MIDI + octaveOffset, degree),
       voice: elements.bassVoice.value,
       level: Number(elements.bassLevel.value) * 1.18,
       durationScale: 3.2 + complexity * 1.4,
@@ -513,10 +590,9 @@ function buildBassPattern() {
 }
 
 function buildDronePattern() {
-  const scale = scalePresets[elements.scalePreset.value];
-  const root = ROOT_MIDI + 12 + scale[0];
-  const fifth = ROOT_MIDI + 12 + (scale[Math.min(3, scale.length - 1)] ?? 7);
-  const third = ROOT_MIDI + 12 + (scale[Math.min(2, scale.length - 1)] ?? 5);
+  const root = degreeToMidiApprox(ROOT_MIDI + 12, state.rootDegrees.drone);
+  const fifth = degreeToMidiApprox(ROOT_MIDI + 12, state.rootDegrees.drone + 4);
+  const third = degreeToMidiApprox(ROOT_MIDI + 12, state.rootDegrees.drone + 2);
 
   return Array.from({ length: STEPS }, (_, step) => {
     return {
@@ -533,19 +609,20 @@ function buildDronePattern() {
 }
 
 function buildPercussionPattern() {
-  const scale = scalePresets[elements.scalePreset.value];
+  const scale = getCurrentScale();
   const { edgeDensity, complexity } = state.features;
 
   return Array.from({ length: STEPS }, (_, step) => {
     const scan = getScanSampleForStep(step);
-    const degree = scale[(step + Math.floor(scan.brightness * scale.length)) % scale.length];
+    const degree = state.rootDegrees.percussion + ((step + Math.floor(scan.brightness * scale.ratios.length)) % scale.ratios.length);
     const active = true;
     return {
       active,
       accent: step % 4 === 0 || edgeDensity > 0.1 || scan.edge > 0.35,
       slide: scan.contrast > 0.32,
       cutoff: Number(elements.cutoff.value) * (0.9 + scan.brightness * 0.7),
-      note: ROOT_MIDI + 24 + degree,
+      note: degreeToMidiApprox(ROOT_MIDI + 24, degree),
+      frequency: degreeToFrequency(ROOT_MIDI + 24, degree),
       voice: elements.percussionVoice.value,
       level: Number(elements.percussionLevel.value) * 0.72,
       durationScale: 3.6 + complexity * 1.6,
@@ -1267,7 +1344,7 @@ function createVoiceEngine(audioContext, layer) {
 
   return {
     play(step, time, controls, scanSample) {
-      const frequency = midiToFrequency(step.note) * (1 + (scanSample.brightness - 0.5) * 0.08);
+      const frequency = (step.frequency ?? midiToFrequency(step.note)) * (1 + (scanSample.brightness - 0.5) * 0.08);
       const attackGain = (step.accent ? controls.accent + state.features.edgeDensity * 0.5 : 0.72) * (step.level ?? 1);
       const baseLength = step.slide ? getStepDuration() + controls.slide : controls.decay;
       const noteLength = baseLength * (step.durationScale ?? 1);
@@ -1425,12 +1502,17 @@ function getVoiceProfile(voice) {
 
 function createLayeredOscillators(audioContext, layers, frequency, time, slide, slideTime, lastFrequency, spread = 0) {
   const output = audioContext.createGain();
-  const energy = layers.reduce((sum, layer) => sum + (layer.gain ** 2), 0);
+  const harmonics = Number(elements.harmonics.value);
+  const shapedLayers = layers.map((layer, index) => ({
+    ...layer,
+    gain: index === 0 ? layer.gain : layer.gain * harmonics,
+  }));
+  const energy = shapedLayers.reduce((sum, layer) => sum + (layer.gain ** 2), 0);
   output.gain.value = energy > 0 ? 0.72 / Math.sqrt(energy) : 1;
-  const nodes = layers.map((layer) => {
+  const nodes = shapedLayers.map((layer, index) => {
     const oscillator = audioContext.createOscillator();
     oscillator.type = layer.type;
-    oscillator.detune.value = (layer.detune ?? 0) + centeredSpread(index, layers.length, spread);
+    oscillator.detune.value = (layer.detune ?? 0) + centeredSpread(index, shapedLayers.length, spread);
     const gain = audioContext.createGain();
     gain.gain.value = layer.gain;
     oscillator.connect(gain);
@@ -1634,10 +1716,9 @@ function createRitualChorus(audioContext, frequency, time, slide, slideTime, las
 function startDroneBed() {
   if (!state.audioContext) return;
   stopDroneBed();
-  const scale = scalePresets[elements.scalePreset.value];
-  const root = ROOT_MIDI + 12 + scale[0];
-  const fifth = ROOT_MIDI + 12 + (scale[Math.min(3, scale.length - 1)] ?? 7);
-  const third = ROOT_MIDI + 12 + (scale[Math.min(2, scale.length - 1)] ?? 5);
+  const root = degreeToFrequency(ROOT_MIDI + 12, state.rootDegrees.drone);
+  const third = degreeToFrequency(ROOT_MIDI + 12, state.rootDegrees.drone + 2);
+  const fifth = degreeToFrequency(ROOT_MIDI + 12, state.rootDegrees.drone + 4);
   state.droneBed = createDroneBed(state.audioContext, [root, third, fifth], getDroneControls());
   state.droneBed.start(state.audioContext.currentTime);
 }
@@ -1656,19 +1737,23 @@ function restartDroneBed() {
 function startHarmonicBeds() {
   if (!state.audioContext) return;
   stopHarmonicBeds();
-  const scale = scalePresets[elements.scalePreset.value];
-  const root = scale[0];
-  const third = scale[Math.min(2, scale.length - 1)] ?? 5;
-  const fifth = scale[Math.min(3, scale.length - 1)] ?? 7;
   state.harmonicBeds.bass = createContinuousBed(
     state.audioContext,
-    [ROOT_MIDI + root, ROOT_MIDI + third, ROOT_MIDI + fifth],
+    [
+      degreeToFrequency(ROOT_MIDI, state.rootDegrees.bass),
+      degreeToFrequency(ROOT_MIDI, state.rootDegrees.bass + 2),
+      degreeToFrequency(ROOT_MIDI, state.rootDegrees.bass + 4),
+    ],
     getOscBedControls("bass"),
     "bass",
   );
   state.harmonicBeds.percussion = createContinuousBed(
     state.audioContext,
-    [ROOT_MIDI + 24 + root, ROOT_MIDI + 24 + third, ROOT_MIDI + 24 + fifth],
+    [
+      degreeToFrequency(ROOT_MIDI + 24, state.rootDegrees.percussion),
+      degreeToFrequency(ROOT_MIDI + 24, state.rootDegrees.percussion + 2),
+      degreeToFrequency(ROOT_MIDI + 24, state.rootDegrees.percussion + 4),
+    ],
     getOscBedControls("percussion"),
     "percussion",
   );
@@ -1786,8 +1871,7 @@ function createContinuousBed(audioContext, notes, controls, layer) {
   };
 }
 
-function createBedOscillatorSet(audioContext, note, voice, index, spread) {
-  const frequency = midiToFrequency(note);
+function createBedOscillatorSet(audioContext, frequency, voice, index, spread) {
   const recipes = voice === "Ritual Chorus"
     ? [
         { type: "sawtooth", ratio: 1, detune: -9 },
@@ -1806,17 +1890,17 @@ function createBedOscillatorSet(audioContext, note, voice, index, spread) {
           { type: "sine", ratio: 2.03, detune: 6 },
         ];
 
-  return recipes.map((recipe, recipeIndex) => {
+  const activeRecipes = filterRecipesByHarmonics(recipes);
+  return activeRecipes.map((recipe, recipeIndex) => {
     const oscillator = audioContext.createOscillator();
     oscillator.type = recipe.type;
     oscillator.frequency.value = frequency * recipe.ratio;
-    oscillator.detune.value = recipe.detune + centeredSpread(recipeIndex, recipes.length, spread) + index * 2;
+    oscillator.detune.value = recipe.detune + centeredSpread(recipeIndex, activeRecipes.length, spread) + index * 2;
     return oscillator;
   });
 }
 
-function createDroneOscillatorSet(audioContext, note, voice, index, spread = 0) {
-  const frequency = midiToFrequency(note);
+function createDroneOscillatorSet(audioContext, frequency, voice, index, spread = 0) {
   const recipes = voice === "Bit Noise"
     ? [
         { type: "square", ratio: 1, detune: -2 + index },
@@ -1843,13 +1927,19 @@ function createDroneOscillatorSet(audioContext, note, voice, index, spread = 0) 
           { type: "triangle", ratio: 2, detune: 3 - index * 3 },
         ];
 
-  return recipes.map((recipe, recipeIndex) => {
+  const activeRecipes = filterRecipesByHarmonics(recipes);
+  return activeRecipes.map((recipe, recipeIndex) => {
     const oscillator = audioContext.createOscillator();
     oscillator.type = recipe.type;
     oscillator.frequency.value = frequency * recipe.ratio;
-    oscillator.detune.value = recipe.detune + centeredSpread(recipeIndex, recipes.length, spread);
+    oscillator.detune.value = recipe.detune + centeredSpread(recipeIndex, activeRecipes.length, spread);
     return oscillator;
   });
+}
+
+function filterRecipesByHarmonics(recipes) {
+  const harmonics = Number(elements.harmonics.value);
+  return recipes.filter((_, index) => index === 0 || harmonics >= (index / Math.max(1, recipes.length - 1)) * 1.4);
 }
 
 function centeredSpread(index, count, spread) {
