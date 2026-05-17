@@ -95,6 +95,9 @@ const state = {
   uploadedImage: null,
   uploadedImageUrl: null,
   defaultCellImage: null,
+  plantSpiralImage: null,
+  tissueCanvas: document.createElement("canvas"),
+  tissueFrame: 0,
   scanPath: [],
   isPlaying: false,
   stepIndex: 0,
@@ -699,6 +702,14 @@ function loadDefaultCellImage() {
   image.src = "assets/cell2.vector.svg?v=20260517-8";
 }
 
+function loadPlantSpiralImage() {
+  const image = new Image();
+  image.onload = () => {
+    state.plantSpiralImage = image;
+  };
+  image.src = "assets/plant-spiral.png";
+}
+
 function drawWovenGeometry(inverted = false) {
   const { width, height } = elements.canvas;
   const { lanes, spacing, angleShift } = state.geometrySeeds;
@@ -773,6 +784,10 @@ function drawAutogenesisField() {
   const { lanes, spacing, angleShift, cells } = state.geometrySeeds;
   const { loudness, brightness, roughness } = state.audioFeedback;
   const phase = state.autogenesisCycle * 0.37;
+  if (state.plantSpiralImage) {
+    drawLivingPlantTissue(width, height, loudness, brightness, roughness, phase);
+    return;
+  }
   ctx2d.clearRect(0, 0, width, height);
   ctx2d.fillStyle = "#0b0b0c";
   ctx2d.fillRect(0, 0, width, height);
@@ -841,6 +856,72 @@ function drawAutogenesisField() {
     );
     ctx2d.stroke();
   }
+}
+
+function drawLivingPlantTissue(width, height, loudness, brightness, roughness, phase) {
+  const tissueWidth = 180;
+  const tissueHeight = 140;
+  const offscreen = state.tissueCanvas;
+  offscreen.width = tissueWidth;
+  offscreen.height = tissueHeight;
+  const tissueCtx = offscreen.getContext("2d");
+  tissueCtx.clearRect(0, 0, tissueWidth, tissueHeight);
+  tissueCtx.drawImage(state.plantSpiralImage, 0, 0, tissueWidth, tissueHeight);
+
+  const source = tissueCtx.getImageData(0, 0, tissueWidth, tissueHeight);
+  const warped = tissueCtx.createImageData(tissueWidth, tissueHeight);
+  const warpStrength = 2 + loudness * 7 + roughness * 10;
+  const pulse = 0.5 + Math.sin(state.tissueFrame * 0.025 + phase) * 0.5;
+
+  for (let y = 0; y < tissueHeight; y += 1) {
+    for (let x = 0; x < tissueWidth; x += 1) {
+      const dx = Math.sin(y * 0.11 + phase + state.tissueFrame * 0.018) * warpStrength;
+      const dy = Math.cos(x * 0.09 - phase * 1.3 + state.tissueFrame * 0.014) * warpStrength;
+      const sx = clamp(Math.round(x + dx), 0, tissueWidth - 1);
+      const sy = clamp(Math.round(y + dy), 0, tissueHeight - 1);
+      const srcIndex = (sy * tissueWidth + sx) * 4;
+      const dstIndex = (y * tissueWidth + x) * 4;
+      warped.data[dstIndex] = source.data[srcIndex] * (0.88 + roughness * 0.18);
+      warped.data[dstIndex + 1] = Math.min(255, source.data[srcIndex + 1] * (1 + brightness * 0.28 + pulse * 0.08));
+      warped.data[dstIndex + 2] = source.data[srcIndex + 2] * (0.82 + brightness * 0.16);
+      warped.data[dstIndex + 3] = 255;
+    }
+  }
+
+  tissueCtx.putImageData(warped, 0, 0);
+  ctx2d.clearRect(0, 0, width, height);
+  ctx2d.imageSmoothingEnabled = true;
+  ctx2d.drawImage(offscreen, 0, 0, width, height);
+  drawCellMembranes(width, height, loudness, brightness, roughness, phase);
+  state.tissueFrame += 1;
+}
+
+function drawCellMembranes(width, height, loudness, brightness, roughness, phase) {
+  const membraneCount = 14 + Math.round(brightness * 18 + roughness * 10);
+  ctx2d.save();
+  ctx2d.globalCompositeOperation = "screen";
+  ctx2d.strokeStyle = `rgba(210, 242, 150, ${0.12 + brightness * 0.22})`;
+  ctx2d.lineWidth = 1 + loudness * 1.4;
+  for (let i = 0; i < membraneCount; i += 1) {
+    const x = randomSeeded(i * 19.3 + state.autogenesisCycle) * width;
+    const y = randomSeeded(i * 37.7 + state.autogenesisCycle) * height;
+    const radius = 18 + randomSeeded(i * 51.1 + state.autogenesisCycle) * (40 + roughness * 70);
+    const sides = 5 + Math.round(randomSeeded(i * 13.7) * 5);
+    ctx2d.beginPath();
+    for (let side = 0; side <= sides; side += 1) {
+      const angle = (side / sides) * Math.PI * 2;
+      const wobble = 0.74
+        + Math.sin(angle * 3 + phase + i) * (0.08 + roughness * 0.14)
+        + Math.cos(state.tissueFrame * 0.02 + side) * 0.05;
+      const px = x + Math.cos(angle) * radius * wobble;
+      const py = y + Math.sin(angle) * radius * wobble;
+      if (side === 0) ctx2d.moveTo(px, py);
+      else ctx2d.lineTo(px, py);
+    }
+    ctx2d.closePath();
+    ctx2d.stroke();
+  }
+  ctx2d.restore();
 }
 
 function drawStarLattice(inverted = false) {
@@ -1849,3 +1930,4 @@ bindControls();
 syncLabels();
 rebuildPattern();
 loadDefaultCellImage();
+loadPlantSpiralImage();
