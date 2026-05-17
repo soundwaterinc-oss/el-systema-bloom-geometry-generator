@@ -1306,7 +1306,8 @@ function restartDroneBed() {
 
 function createDroneBed(audioContext, notes, controls) {
   const output = audioContext.createGain();
-  output.gain.value = controls.level;
+  const droneNormalization = 1 / Math.sqrt(notes.length * 2);
+  output.gain.value = controls.level * droneNormalization;
   const filter = audioContext.createBiquadFilter();
   filter.type = controls.voice === "Ritual Chorus" ? "bandpass" : "lowpass";
   filter.frequency.value = controls.cutoff * 0.78 * controls.toneBrightness;
@@ -1336,7 +1337,7 @@ function createDroneBed(audioContext, notes, controls) {
       lfo.stop(time + 0.2);
     },
     update(nextControls) {
-      output.gain.setTargetAtTime(nextControls.level, audioContext.currentTime, 0.05);
+      output.gain.setTargetAtTime(nextControls.level * droneNormalization, audioContext.currentTime, 0.05);
       lfo.frequency.setTargetAtTime(nextControls.lfoRate, audioContext.currentTime, 0.05);
       lfoGain.gain.setTargetAtTime(nextControls.lfoDepth, audioContext.currentTime, 0.05);
       filter.frequency.setTargetAtTime(nextControls.cutoff * 0.78 * nextControls.toneBrightness, audioContext.currentTime, 0.05);
