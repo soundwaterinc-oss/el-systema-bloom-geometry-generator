@@ -79,6 +79,10 @@ const state = {
   analyser: null,
   analyserData: null,
   synths: null,
+  harmonicBeds: {
+    bass: null,
+    percussion: null,
+  },
   droneBed: null,
   autogenesisActive: false,
   autogenesisId: null,
@@ -223,11 +227,11 @@ function bindControls() {
     });
   });
 
-  ["rhythmPreset", "bassVoice", "percussionVoice", "functionPreset", "visualPreset", "scanPathPreset"].forEach((id) => {
+  ["rhythmPreset", "functionPreset", "visualPreset", "scanPathPreset"].forEach((id) => {
     elements[id].addEventListener("change", () => rebuildPattern(false));
   });
 
-  ["droneVoice", "scalePreset"].forEach((id) => {
+  ["bassVoice", "percussionVoice", "droneVoice", "scalePreset"].forEach((id) => {
     elements[id].addEventListener("change", () => rebuildPattern(true));
   });
 }
@@ -259,6 +263,12 @@ function syncLabels() {
 
   if (state.droneBed) {
     state.droneBed.update(getDroneControls());
+  }
+  if (state.harmonicBeds.bass) {
+    state.harmonicBeds.bass.update(getOscBedControls("bass"));
+  }
+  if (state.harmonicBeds.percussion) {
+    state.harmonicBeds.percussion.update(getOscBedControls("percussion"));
   }
 }
 
@@ -299,11 +309,13 @@ async function toggleTransport() {
     state.stepIndex = 0;
     state.nextStepTime = state.audioContext.currentTime + 0.08;
     startDroneBed();
+    startHarmonicBeds();
     state.schedulerId = window.setInterval(schedule, 25);
   } else {
     window.clearInterval(state.schedulerId);
     state.schedulerId = null;
     stopDroneBed();
+    stopHarmonicBeds();
     renderSteps();
   }
 }
@@ -315,8 +327,12 @@ function schedule() {
     if (state.droneBed) {
       state.droneBed.setScanModulation(scanSample);
     }
-    playLayerStep("bass", state.nextStepTime);
-    playLayerStep("percussion", state.nextStepTime);
+    if (state.harmonicBeds.bass) {
+      state.harmonicBeds.bass.setScanModulation(scanSample);
+    }
+    if (state.harmonicBeds.percussion) {
+      state.harmonicBeds.percussion.setScanModulation(scanSample);
+    }
     renderSteps(state.stepIndex);
     state.nextStepTime += getStepDuration();
     state.stepIndex = (state.stepIndex + 1) % STEPS;
@@ -362,6 +378,20 @@ function getDroneControls() {
   };
 }
 
+function getOscBedControls(layer) {
+  const isBass = layer === "bass";
+  return {
+    cutoff: Number(elements.cutoff.value),
+    resonance: Number(elements.resonance.value),
+    level: isBass ? Number(elements.bassLevel.value) : Number(elements.percussionLevel.value),
+    drive: isBass ? Number(elements.osc1Drive.value) : Number(elements.osc2Drive.value),
+    spread: isBass ? Number(elements.osc1Spread.value) : Number(elements.osc2Spread.value),
+    motion: isBass ? Number(elements.osc1Motion.value) : Number(elements.osc2Motion.value),
+    toneBrightness: Number(elements.toneBrightness.value),
+    voice: isBass ? elements.bassVoice.value : elements.percussionVoice.value,
+  };
+}
+
 function playLayerStep(layer, time) {
   const step = state.layerPatterns[layer][state.stepIndex];
   if (step && step.active) {
@@ -380,6 +410,7 @@ function rebuildPattern(restartDrone = false) {
   renderSteps();
   if (state.isPlaying && restartDrone) {
     restartDroneBed();
+    restartHarmonicBeds();
   }
 }
 
@@ -665,7 +696,7 @@ function loadDefaultCellImage() {
     state.defaultCellImage = image;
     rebuildPattern();
   };
-  image.src = "assets/cell2.vector.svg";
+  image.src = "assets/cell2.vector.svg?v=20260517-8";
 }
 
 function drawWovenGeometry(inverted = false) {
@@ -1541,6 +1572,44 @@ function restartDroneBed() {
   startDroneBed();
 }
 
+function startHarmonicBeds() {
+  if (!state.audioContext) return;
+  stopHarmonicBeds();
+  const scale = scalePresets[elements.scalePreset.value];
+  const root = scale[0];
+  const third = scale[Math.min(2, scale.length - 1)] ?? 5;
+  const fifth = scale[Math.min(3, scale.length - 1)] ?? 7;
+  state.harmonicBeds.bass = createContinuousBed(
+    state.audioContext,
+    [ROOT_MIDI + root, ROOT_MIDI + third, ROOT_MIDI + fifth],
+    getOscBedControls("bass"),
+    "bass",
+  );
+  state.harmonicBeds.percussion = createContinuousBed(
+    state.audioContext,
+    [ROOT_MIDI + 24 + root, ROOT_MIDI + 24 + third, ROOT_MIDI + 24 + fifth],
+    getOscBedControls("percussion"),
+    "percussion",
+  );
+  state.harmonicBeds.bass.start(state.audioContext.currentTime);
+  state.harmonicBeds.percussion.start(state.audioContext.currentTime);
+}
+
+function stopHarmonicBeds() {
+  if (!state.audioContext) return;
+  ["bass", "percussion"].forEach((layer) => {
+    if (state.harmonicBeds[layer]) {
+      state.harmonicBeds[layer].stop(state.audioContext.currentTime + 0.08);
+      state.harmonicBeds[layer] = null;
+    }
+  });
+}
+
+function restartHarmonicBeds() {
+  stopHarmonicBeds();
+  startHarmonicBeds();
+}
+
 function createDroneBed(audioContext, notes, controls) {
   const output = audioContext.createGain();
   const shaper = audioContext.createWaveShaper();
@@ -1590,6 +1659,79 @@ function createDroneBed(audioContext, notes, controls) {
       filter.Q.setTargetAtTime((controls.resonance * 0.55) + sample.contrast * 14, audioContext.currentTime, 0.08);
     },
   };
+}
+
+function createContinuousBed(audioContext, notes, controls, layer) {
+  const output = audioContext.createGain();
+  const shaper = audioContext.createWaveShaper();
+  const panner = audioContext.createStereoPanner();
+  const normalization = 1 / Math.sqrt(notes.length * 3);
+  output.gain.value = controls.level * normalization * (layer === "bass" ? 0.52 : 0.42);
+  shaper.curve = createSoftClipCurve(controls.drive + 0.8);
+  shaper.oversample = "2x";
+
+  const filter = audioContext.createBiquadFilter();
+  filter.type = layer === "bass" ? "lowpass" : "bandpass";
+  filter.frequency.value = controls.cutoff * controls.toneBrightness * (layer === "bass" ? 0.78 : 1.16);
+  filter.Q.value = controls.resonance * (layer === "bass" ? 0.65 : 0.9);
+
+  output.connect(shaper);
+  shaper.connect(panner);
+  panner.connect(filter);
+  filter.connect(state.masterBus);
+
+  const oscillators = notes.flatMap((note, index) => createBedOscillatorSet(audioContext, note, controls.voice, index, controls.spread));
+  oscillators.forEach((node) => node.connect(output));
+
+  return {
+    start(time) {
+      oscillators.forEach((node) => node.start(time));
+    },
+    stop(time) {
+      output.gain.cancelScheduledValues(time);
+      output.gain.setTargetAtTime(0.0001, time, 0.06);
+      oscillators.forEach((node) => node.stop(time + 0.2));
+    },
+    update(nextControls) {
+      output.gain.setTargetAtTime(nextControls.level * normalization * (layer === "bass" ? 0.52 : 0.42), audioContext.currentTime, 0.05);
+      shaper.curve = createSoftClipCurve(nextControls.drive + 0.8);
+      filter.frequency.setTargetAtTime(nextControls.cutoff * nextControls.toneBrightness * (layer === "bass" ? 0.78 : 1.16), audioContext.currentTime, 0.05);
+      filter.Q.setTargetAtTime(nextControls.resonance * (layer === "bass" ? 0.65 : 0.9), audioContext.currentTime, 0.05);
+    },
+    setScanModulation(sample) {
+      filter.detune.setTargetAtTime((sample.brightness - 0.5) * (layer === "bass" ? 280 : 620), audioContext.currentTime, 0.08);
+      panner.pan.setTargetAtTime(clamp(sample.pan * controls.motion, -1, 1), audioContext.currentTime, 0.08);
+    },
+  };
+}
+
+function createBedOscillatorSet(audioContext, note, voice, index, spread) {
+  const frequency = midiToFrequency(note);
+  const recipes = voice === "Ritual Chorus"
+    ? [
+        { type: "sawtooth", ratio: 1, detune: -9 },
+        { type: "sawtooth", ratio: 1.01, detune: 7 },
+        { type: "triangle", ratio: 1.5, detune: 0 },
+      ]
+    : voice === "Gamelan Gong"
+      ? [
+          { type: "sine", ratio: 0.5, detune: -3 },
+          { type: "sine", ratio: 0.76, detune: 0 },
+          { type: "sine", ratio: 1.52, detune: 4 },
+        ]
+      : [
+          { type: "sine", ratio: 1, detune: -4 },
+          { type: "triangle", ratio: 1.19, detune: 3 },
+          { type: "sine", ratio: 2.03, detune: 6 },
+        ];
+
+  return recipes.map((recipe, recipeIndex) => {
+    const oscillator = audioContext.createOscillator();
+    oscillator.type = recipe.type;
+    oscillator.frequency.value = frequency * recipe.ratio;
+    oscillator.detune.value = recipe.detune + centeredSpread(recipeIndex, recipes.length, spread) + index * 2;
+    return oscillator;
+  });
 }
 
 function createDroneOscillatorSet(audioContext, note, voice, index, spread = 0) {
