@@ -41,6 +41,7 @@ const voicePresets = {
 };
 
 const visualPresets = {
+  "Cell Vector": "cell-vector",
   "Uploaded Image": "uploaded",
   "Chevron Weave": "woven",
   "Dark Chevron": "dark-woven",
@@ -77,6 +78,7 @@ const state = {
   droneBed: null,
   uploadedImage: null,
   uploadedImageUrl: null,
+  defaultCellImage: null,
   scanPath: [],
   isPlaying: false,
   stepIndex: 0,
@@ -158,7 +160,7 @@ function populatePresets() {
   fillSelect(elements.rhythmPreset, Object.keys(rhythmPresets), "Kecak Cycle");
   fillSelect(elements.scalePreset, Object.keys(scalePresets), "Japanese In");
   fillSelect(elements.functionPreset, Object.keys(functionPresets), "Orbit");
-  fillSelect(elements.visualPreset, Object.keys(visualPresets), "Chevron Weave");
+  fillSelect(elements.visualPreset, Object.keys(visualPresets), "Cell Vector");
   fillSelect(elements.scanPathPreset, Object.keys(scanPathPresets), "Horizontal Raster");
   fillSelect(elements.bassVoice, ["Bronze Cluster", "Gamelan Metallophone", "Ritual Chorus", "Scan Pulse"], "Bronze Cluster");
   fillSelect(elements.droneVoice, ["Ritual Chorus", "Gamelan Gong", "Bit Noise", "Pipe Organ"], "Ritual Chorus");
@@ -417,8 +419,14 @@ function normalizedStepValue(step, a, b) {
 }
 
 function drawGeometry(withOverlay = true) {
+  if (visualPresets[elements.visualPreset.value] === "cell-vector" && state.defaultCellImage) {
+    drawImageToCanvas(state.defaultCellImage);
+    if (withOverlay) drawScanOverlay();
+    return;
+  }
+
   if (visualPresets[elements.visualPreset.value] === "uploaded" && state.uploadedImage) {
-    drawUploadedImage();
+    drawImageToCanvas(state.uploadedImage);
     if (withOverlay) drawScanOverlay();
     return;
   }
@@ -456,12 +464,11 @@ function drawGeometry(withOverlay = true) {
   if (withOverlay) drawScanOverlay();
 }
 
-function drawUploadedImage() {
+function drawImageToCanvas(image) {
   const { width, height } = elements.canvas;
   ctx2d.clearRect(0, 0, width, height);
   ctx2d.fillStyle = "#0a0a0a";
   ctx2d.fillRect(0, 0, width, height);
-  const image = state.uploadedImage;
   const scale = Math.min(width / image.width, height / image.height);
   const drawWidth = image.width * scale;
   const drawHeight = image.height * scale;
@@ -538,6 +545,15 @@ function handleImageUpload(event) {
   };
   image.src = URL.createObjectURL(file);
   elements.imageInput.value = "";
+}
+
+function loadDefaultCellImage() {
+  const image = new Image();
+  image.onload = () => {
+    state.defaultCellImage = image;
+    rebuildPattern();
+  };
+  image.src = "assets/cell2.vector.svg";
 }
 
 function drawWovenGeometry(inverted = false) {
@@ -1440,3 +1456,4 @@ populatePresets();
 bindControls();
 syncLabels();
 rebuildPattern();
+loadDefaultCellImage();
