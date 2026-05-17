@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Geometry Scanning Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260517-4" />
+    <link rel="stylesheet" href="styles.css?v=20260517-5" />
   </head>
   <body>
     <main class="app">
@@ -123,7 +123,7 @@
 
           <div class="layer-controls">
             <label>
-              <span>Bass voice</span>
+              <span>OSC1 voice</span>
               <select id="bassVoice"></select>
             </label>
             <label>
@@ -131,18 +131,18 @@
               <select id="droneVoice"></select>
             </label>
             <label>
-              <span>Upper voice</span>
+              <span>OSC2 voice</span>
               <select id="percussionVoice"></select>
             </label>
             <label>
-              <span>Bass level</span>
+              <span>OSC1 level</span>
               <input id="bassLevel" type="range" min="0" max="1.2" step="0.01" value="0.9" />
               <strong id="bassLevelValue">0.90</strong>
             </label>
             <label>
               <span>Drone level</span>
-              <input id="droneLevel" type="range" min="0" max="1.2" step="0.01" value="0.06" />
-              <strong id="droneLevelValue">0.06</strong>
+              <input id="droneLevel" type="range" min="0" max="1.2" step="0.01" value="0.02" />
+              <strong id="droneLevelValue">0.02</strong>
             </label>
             <label>
               <span>Drone LFO rate</span>
@@ -155,7 +155,7 @@
               <strong id="droneLfoDepthValue">420</strong>
             </label>
             <label>
-              <span>Upper level</span>
+              <span>OSC2 level</span>
               <input id="percussionLevel" type="range" min="0" max="1.2" step="0.01" value="0.56" />
               <strong id="percussionLevelValue">0.56</strong>
             </label>
@@ -184,6 +184,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260517-4"></script>
+    <script src="app.js?v=20260517-5"></script>
   </body>
 </html>

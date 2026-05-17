@@ -892,9 +892,9 @@ function renderSteps(currentStep = -1) {
   drawLuminanceProfile(currentStep >= 0 ? Math.floor((currentStep / STEPS) * state.scanPath.length) : -1);
   elements.stepGrid.innerHTML = "";
   [
-    ["bass", "Bass"],
+    ["bass", "OSC1"],
     ["drone", "Drone"],
-    ["percussion", "Upper Harmony"],
+    ["percussion", "OSC2"],
   ].forEach(([key, label]) => {
     const row = document.createElement("section");
     row.className = "layer-row";
@@ -985,16 +985,24 @@ function createVoiceEngine(audioContext) {
 
       const source = createVoiceSource(audioContext, step.voice, frequency, time, noteLength, step.slide, controls.slide, lastFrequency, controls);
       const amp = audioContext.createGain();
+      const shaper = audioContext.createWaveShaper();
       const panner = audioContext.createStereoPanner();
+      const texture = createSustainedTexture(audioContext, noteLength, controls.noiseMix * (0.08 + scanSample.edge * 0.24));
       panner.pan.setValueAtTime(step.pan ?? scanSample.pan ?? 0, time);
+      shaper.curve = createSoftClipCurve(controls.grit);
+      shaper.oversample = "2x";
       amp.gain.setValueAtTime(0.0001, time);
       amp.gain.exponentialRampToValueAtTime(attackGain, time + 0.005);
       amp.gain.exponentialRampToValueAtTime(0.0001, time + noteLength);
       source.output.connect(amp);
-      amp.connect(panner);
+      texture.output.connect(amp);
+      amp.connect(shaper);
+      shaper.connect(panner);
       panner.connect(filter);
       source.start(time);
+      texture.start(time);
       source.stop(time + noteLength + 0.05);
+      texture.stop(time + noteLength + 0.05);
       lastFrequency = frequency;
     },
   };
@@ -1004,10 +1012,12 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
   switch (voice) {
     case "Bronze Cluster":
       return createLayeredOscillators(audioContext, [
-        { type: "sine", ratio: 1, gain: 0.42 },
-        { type: "sine", ratio: 1.27, gain: 0.24 },
-        { type: "sine", ratio: 1.78, gain: 0.18 },
-        { type: "sine", ratio: 2.41, gain: 0.16 },
+        { type: "sine", ratio: 1, gain: 0.34, detune: -3 },
+        { type: "sine", ratio: 1.17, gain: 0.18, detune: 4 },
+        { type: "sine", ratio: 1.27, gain: 0.2 },
+        { type: "triangle", ratio: 1.78, gain: 0.16, detune: -5 },
+        { type: "sine", ratio: 2.41, gain: 0.14 },
+        { type: "sine", ratio: 3.13, gain: 0.1, detune: 7 },
       ], frequency, time, slide, slideTime, lastFrequency);
     case "Industrial Metal":
       return createLayeredOscillators(audioContext, [
@@ -1018,10 +1028,12 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
       ], frequency, time, slide, slideTime, lastFrequency);
     case "Sheet Metal":
       return createLayeredOscillators(audioContext, [
-        { type: "triangle", ratio: 1, gain: 0.35 },
-        { type: "sine", ratio: 2.13, gain: 0.28 },
-        { type: "sine", ratio: 3.89, gain: 0.22 },
-        { type: "sine", ratio: 5.43, gain: 0.15 },
+        { type: "triangle", ratio: 1, gain: 0.24, detune: -4 },
+        { type: "sine", ratio: 1.61, gain: 0.16, detune: 5 },
+        { type: "sine", ratio: 2.13, gain: 0.2 },
+        { type: "sine", ratio: 3.89, gain: 0.18 },
+        { type: "sine", ratio: 5.43, gain: 0.14 },
+        { type: "sine", ratio: 7.17, gain: 0.08 },
       ], frequency, time, slide, slideTime, lastFrequency);
     case "Physical Noise":
       return createPhysicalNoise(audioContext, frequency, noteLength, time);
@@ -1035,17 +1047,21 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
       return createWhiteBurst(audioContext, noteLength, time, controls.noiseMix);
     case "Gamelan Gong":
       return createLayeredOscillators(audioContext, [
-        { type: "sine", ratio: 1, gain: 0.62 },
-        { type: "sine", ratio: 1.52, gain: 0.2 },
+        { type: "sine", ratio: 1, gain: 0.34 },
+        { type: "sine", ratio: 1.21, gain: 0.14, detune: -4 },
+        { type: "sine", ratio: 1.52, gain: 0.18 },
         { type: "sine", ratio: 2.08, gain: 0.16 },
         { type: "sine", ratio: 2.71, gain: 0.12 },
+        { type: "triangle", ratio: 3.43, gain: 0.08 },
       ], frequency * 0.5, time, slide, slideTime, lastFrequency * 0.5);
     case "Gamelan Metallophone":
       return createLayeredOscillators(audioContext, [
-        { type: "sine", ratio: 1, gain: 0.54 },
-        { type: "sine", ratio: 1.39, gain: 0.2 },
-        { type: "sine", ratio: 2.03, gain: 0.18 },
-        { type: "sine", ratio: 3.76, gain: 0.12 },
+        { type: "sine", ratio: 1, gain: 0.28, detune: -3 },
+        { type: "triangle", ratio: 1.19, gain: 0.12, detune: 5 },
+        { type: "sine", ratio: 1.39, gain: 0.18 },
+        { type: "sine", ratio: 2.03, gain: 0.16 },
+        { type: "sine", ratio: 2.77, gain: 0.12 },
+        { type: "sine", ratio: 3.76, gain: 0.1 },
       ], frequency, time, slide, slideTime, lastFrequency);
     case "Ritual Chorus":
       return createRitualChorus(audioContext, frequency, time, slide, slideTime, lastFrequency);
@@ -1107,6 +1123,8 @@ function getVoiceProfile(voice) {
 
 function createLayeredOscillators(audioContext, layers, frequency, time, slide, slideTime, lastFrequency) {
   const output = audioContext.createGain();
+  const energy = layers.reduce((sum, layer) => sum + (layer.gain ** 2), 0);
+  output.gain.value = energy > 0 ? 0.72 / Math.sqrt(energy) : 1;
   const nodes = layers.map((layer) => {
     const oscillator = audioContext.createOscillator();
     oscillator.type = layer.type;
@@ -1144,6 +1162,33 @@ function createNoiseSource(audioContext, noteLength) {
       source.stop(stopTime);
     },
   };
+}
+
+function createSustainedTexture(audioContext, noteLength, amount) {
+  const source = createNoiseSource(audioContext, noteLength);
+  const gain = audioContext.createGain();
+  gain.gain.value = amount;
+  source.output.connect(gain);
+  return {
+    output: gain,
+    start(startTime) {
+      source.start(startTime);
+    },
+    stop(stopTime) {
+      source.stop(stopTime);
+    },
+  };
+}
+
+function createSoftClipCurve(amount) {
+  const samples = 256;
+  const curve = new Float32Array(samples);
+  const drive = 1 + amount * 6;
+  for (let i = 0; i < samples; i += 1) {
+    const x = (i / (samples - 1)) * 2 - 1;
+    curve[i] = Math.tanh(x * drive) / Math.tanh(drive);
+  }
+  return curve;
 }
 
 function createPhysicalNoise(audioContext, frequency, noteLength, time) {
@@ -1275,10 +1320,12 @@ function createBambooThump(audioContext, frequency, noteLength, time) {
 
 function createRitualChorus(audioContext, frequency, time, slide, slideTime, lastFrequency) {
   return createLayeredOscillators(audioContext, [
-    { type: "sawtooth", ratio: 1, gain: 0.24, detune: -8 },
-    { type: "sawtooth", ratio: 1, gain: 0.24, detune: 9 },
-    { type: "triangle", ratio: 1.5, gain: 0.18, detune: -5 },
-    { type: "sine", ratio: 2, gain: 0.14, detune: 4 },
+    { type: "sawtooth", ratio: 1, gain: 0.18, detune: -11 },
+    { type: "sawtooth", ratio: 1, gain: 0.18, detune: 9 },
+    { type: "triangle", ratio: 1.01, gain: 0.16, detune: 3 },
+    { type: "triangle", ratio: 1.5, gain: 0.14, detune: -5 },
+    { type: "sine", ratio: 2, gain: 0.12, detune: 4 },
+    { type: "sine", ratio: 2.98, gain: 0.08, detune: -7 },
   ], frequency, time, slide, slideTime, lastFrequency);
 }
 
@@ -1306,7 +1353,7 @@ function restartDroneBed() {
 
 function createDroneBed(audioContext, notes, controls) {
   const output = audioContext.createGain();
-  const droneNormalization = 1 / (Math.sqrt(notes.length * 2) * 3);
+  const droneNormalization = 1 / (Math.sqrt(notes.length * 2) * 9);
   output.gain.value = controls.level * droneNormalization;
   const filter = audioContext.createBiquadFilter();
   filter.type = controls.voice === "Ritual Chorus" ? "bandpass" : "lowpass";
