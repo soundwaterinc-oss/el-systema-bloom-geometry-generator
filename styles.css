@@ -53,9 +53,17 @@ body {
 
 .eyebrow,
 .subtle,
+.build-tag,
 label span,
 .feature-grid span {
   color: var(--muted);
+}
+
+.build-tag {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 h1 {
