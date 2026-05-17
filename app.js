@@ -12,12 +12,28 @@ const rhythmPresets = {
 
 const scalePresets = {
   "Japanese In": semitoneScale([0, 1, 5, 7, 8]),
+  "Hirajoshi": semitoneScale([0, 2, 3, 7, 8]),
+  "Yo": semitoneScale([0, 2, 5, 7, 9]),
+  "Iwato": semitoneScale([0, 1, 5, 6, 10]),
+  "Kumoi": semitoneScale([0, 2, 3, 7, 9]),
+  "Okinawan": semitoneScale([0, 4, 5, 7, 11]),
   "Balinese Pelog": semitoneScale([0, 1, 3, 7, 8]),
   "Javanese Slendro": semitoneScale([0, 2, 5, 7, 10]),
-  "Arabic Hijaz": semitoneScale([0, 1, 4, 5, 7, 8, 11]),
+  "Chinese Pentatonic": semitoneScale([0, 2, 4, 7, 9]),
+  "Mongolian": semitoneScale([0, 2, 4, 7, 9]),
   "Raga Bhairav": semitoneScale([0, 1, 4, 5, 7, 8, 11]),
+  "Raga Yaman": semitoneScale([0, 2, 4, 6, 7, 9, 11]),
+  "Raga Bhairavi": semitoneScale([0, 1, 3, 5, 7, 8, 10]),
+  "Raga Todi": semitoneScale([0, 1, 3, 6, 7, 8, 11]),
+  "Arabic Hijaz": semitoneScale([0, 1, 4, 5, 7, 8, 10]),
+  "Maqam Bayati": semitoneScale([0, 2, 3, 5, 7, 8, 10]),
+  "Persian": semitoneScale([0, 1, 4, 5, 6, 8, 11]),
+  "Phrygian Dominant": semitoneScale([0, 1, 4, 5, 7, 8, 10]),
+  "Hungarian Gypsy": semitoneScale([0, 2, 3, 6, 7, 8, 11]),
+  "Klezmer Freygish": semitoneScale([0, 1, 4, 5, 7, 8, 10]),
   "Andean Pentatonic": semitoneScale([0, 3, 5, 7, 10]),
   "Ethiopian Tizita": semitoneScale([0, 2, 3, 7, 9]),
+  "Mbira Nyamaropa": semitoneScale([0, 2, 4, 7, 9, 11]),
   "1/f Harmonic": { ratios: [1, 9 / 8, 6 / 5, 4 / 3, 3 / 2, 8 / 5, 16 / 9] },
   "Golden Ratio": { ratios: [1, 1.118, 1.272, 1.414, 1.618, 1.809, 1.941] },
 };
@@ -97,6 +113,9 @@ const state = {
     brightness: 0,
     roughness: 0,
   },
+  visualPhase: 0,
+  visualLoopId: null,
+  lastVisualTime: 0,
   uploadedImage: null,
   uploadedImageUrl: null,
   defaultCellImage: null,
@@ -375,7 +394,7 @@ async function startAudio() {
   if (!state.audioContext) {
     state.audioContext = new AudioContext();
     state.masterBus = state.audioContext.createGain();
-    state.masterBus.gain.value = 0.9;
+    state.masterBus.gain.value = 0.08;
     state.analyser = state.audioContext.createAnalyser();
     state.analyser.fftSize = 2048;
     state.analyser.smoothingTimeConstant = 0.82;
@@ -529,8 +548,14 @@ function playLayerStep(layer, time) {
 
 function rebuildPattern(restartDrone = false) {
   state.scanPath = buildScanPath();
+  // Extract features from a neutral draw (no audio-driven modulation),
+  // so the audio→image feedback loop doesn't contaminate musical features.
+  const savedFeedback = { ...state.audioFeedback };
+  state.audioFeedback = { loudness: 0, brightness: 0, roughness: 0 };
   drawGeometry(false);
   state.features = extractFeatures();
+  state.audioFeedback = savedFeedback;
+
   state.layerPatterns = buildLayerPatterns();
   syncFeatureLabels();
   drawScanOverlay();
@@ -688,22 +713,37 @@ function normalizedStepValue(step, a, b) {
 }
 
 function drawGeometry(withOverlay = true) {
+  const af = state.audioFeedback;
+  const phase = state.visualPhase;
+
   if (visualPresets[state.selectedVisual] === "autogenesis") {
     drawAutogenesisField();
+    drawAudioOverlay();
     if (withOverlay) drawScanOverlay();
     return;
   }
   if (visualPresets[state.selectedVisual] === "cell-vector" && state.defaultCellImage) {
     drawImageToCanvas(state.defaultCellImage);
+    drawAudioOverlay();
     if (withOverlay) drawScanOverlay();
     return;
   }
 
   if (visualPresets[state.selectedVisual] === "uploaded" && state.uploadedImage) {
     drawImageToCanvas(state.uploadedImage);
+    drawAudioOverlay();
     if (withOverlay) drawScanOverlay();
     return;
   }
+
+  // Generative patterns get a subtle audio-driven breathing transform
+  const { width, height } = elements.canvas;
+  ctx2d.save();
+  ctx2d.translate(width / 2, height / 2);
+  ctx2d.rotate(Math.sin(phase * 0.27) * 0.025 + af.roughness * 0.02);
+  const breath = 1 + af.loudness * 0.04 + Math.sin(phase * 0.6) * 0.015;
+  ctx2d.scale(breath, breath);
+  ctx2d.translate(-width / 2, -height / 2);
 
   switch (visualPresets[state.selectedVisual]) {
     case "dark-woven":
@@ -735,7 +775,34 @@ function drawGeometry(withOverlay = true) {
       drawWovenGeometry();
       break;
   }
+  ctx2d.restore();
+  drawAudioOverlay();
   if (withOverlay) drawScanOverlay();
+}
+
+function drawAudioOverlay() {
+  const { width, height } = elements.canvas;
+  const af = state.audioFeedback;
+  const phase = state.visualPhase;
+  if (af.loudness < 0.01 && af.brightness < 0.01) return;
+
+  ctx2d.save();
+  ctx2d.globalCompositeOperation = "screen";
+  const bandCount = 6;
+  for (let i = 0; i < bandCount; i += 1) {
+    const drift = (phase * (40 + i * 12) + (i / bandCount) * height) % height;
+    const grad = ctx2d.createLinearGradient(0, drift - 36, 0, drift + 36);
+    const alpha = 0.04 + af.loudness * 0.18 + af.brightness * 0.1;
+    grad.addColorStop(0, "rgba(255, 122, 24, 0)");
+    grad.addColorStop(0.5, `rgba(141, 249, 168, ${alpha})`);
+    grad.addColorStop(1, "rgba(255, 122, 24, 0)");
+    ctx2d.fillStyle = grad;
+    ctx2d.fillRect(0, drift - 36, width, 72);
+  }
+  ctx2d.globalCompositeOperation = "soft-light";
+  ctx2d.fillStyle = `rgba(255, 122, 24, ${af.brightness * 0.18})`;
+  ctx2d.fillRect(0, 0, width, height);
+  ctx2d.restore();
 }
 
 function drawImageToCanvas(image) {
@@ -743,12 +810,29 @@ function drawImageToCanvas(image) {
   ctx2d.clearRect(0, 0, width, height);
   ctx2d.fillStyle = "#0a0a0a";
   ctx2d.fillRect(0, 0, width, height);
-  const scale = Math.min(width / image.width, height / image.height);
-  const drawWidth = image.width * scale;
-  const drawHeight = image.height * scale;
-  const x = (width - drawWidth) / 2;
-  const y = (height - drawHeight) / 2;
+  const imgW = image.naturalWidth || image.width || 304;
+  const imgH = image.naturalHeight || image.height || 270;
+  const af = state.audioFeedback;
+  const phase = state.visualPhase;
+  const audioMag = af.loudness + af.brightness * 0.5 + af.roughness * 0.3;
+  const idleBreath = audioMag > 0.02 ? 0 : Math.sin(phase * 0.4) * 0.008;
+  const zoom = 1 + af.loudness * 0.12 + idleBreath;
+  const baseScale = Math.min(width / imgW, height / imgH);
+  const scale = baseScale * zoom;
+  const drawWidth = imgW * scale;
+  const drawHeight = imgH * scale;
+  const driftX = Math.sin(phase * 0.6) * af.brightness * 32;
+  const driftY = Math.cos(phase * 0.4) * af.roughness * 28;
+  const x = (width - drawWidth) / 2 + driftX;
+  const y = (height - drawHeight) / 2 + driftY;
+  ctx2d.save();
+  if (audioMag > 0.02) {
+    const hue = (phase * 6 + af.brightness * 140) % 360;
+    const saturate = 0.85 + af.loudness * 0.9;
+    ctx2d.filter = `hue-rotate(${hue}deg) saturate(${saturate})`;
+  }
   ctx2d.drawImage(image, x, y, drawWidth, drawHeight);
+  ctx2d.restore();
 }
 
 function drawScanOverlay(currentIndex = -1) {
@@ -825,10 +909,14 @@ function handleImageUpload(event) {
 function loadDefaultCellImage() {
   const image = new Image();
   image.onload = () => {
+    console.log("cell2.vector.svg loaded", image.naturalWidth || image.width, "x", image.naturalHeight || image.height);
     state.defaultCellImage = image;
     rebuildPattern();
   };
-  image.src = "assets/cell2.vector.svg?v=20260517-8";
+  image.onerror = (err) => {
+    console.error("Failed to load cell2.vector.svg", err);
+  };
+  image.src = "assets/cell2.vector.svg?v=20260517-9";
 }
 
 function loadPlantSpiralImage() {
@@ -1388,7 +1476,7 @@ function createVoiceEngine(audioContext, layer) {
   filter.Q.value = 12;
 
   const output = audioContext.createGain();
-  output.gain.value = 0.7;
+  output.gain.value = 0.18;
   filter.connect(output);
   output.connect(state.masterBus);
 
@@ -1836,7 +1924,7 @@ function createDroneBed(audioContext, notes, controls) {
   const output = audioContext.createGain();
   const shaper = audioContext.createWaveShaper();
   const droneNormalization = 1 / (Math.sqrt(notes.length * 2) * 9);
-  output.gain.value = controls.level * droneNormalization;
+  output.gain.value = controls.level * droneNormalization * 0.25;
   shaper.curve = createSoftClipCurve(getDriveAmount(Number(elements.masterDrive.value), controls.drive));
   shaper.oversample = "2x";
   const filter = audioContext.createBiquadFilter();
@@ -1888,7 +1976,7 @@ function createContinuousBed(audioContext, notes, controls, layer) {
   const shaper = audioContext.createWaveShaper();
   const panner = audioContext.createStereoPanner();
   const normalization = 1 / Math.sqrt(notes.length * 3);
-  output.gain.value = controls.level * normalization * (layer === "bass" ? 0.52 : 0.42);
+  output.gain.value = controls.level * normalization * (layer === "bass" ? 0.13 : 0.105);
   shaper.curve = createSoftClipCurve(getDriveAmount(Number(elements.masterDrive.value), controls.drive));
   shaper.oversample = "2x";
 
@@ -2077,3 +2165,42 @@ syncLabels();
 rebuildPattern();
 loadDefaultCellImage();
 loadPlantSpiralImage();
+startVisualLoop();
+
+function startVisualLoop() {
+  if (state.visualLoopId) return;
+  state.lastVisualTime = performance.now();
+  const tick = (now) => {
+    const dt = Math.min(0.1, (now - state.lastVisualTime) / 1000);
+    state.lastVisualTime = now;
+
+    if (state.analyser && state.audioContext && state.audioContext.state === "running") {
+      const af = getMasterAudioFeatures();
+      const k = 0.14;
+      state.audioFeedback.loudness = state.audioFeedback.loudness * (1 - k) + af.loudness * k;
+      state.audioFeedback.brightness = state.audioFeedback.brightness * (1 - k) + af.brightness * k;
+      state.audioFeedback.roughness = state.audioFeedback.roughness * (1 - k) + af.roughness * k;
+    } else {
+      // Idle gentle drift
+      state.audioFeedback.loudness = Math.max(0, state.audioFeedback.loudness * 0.96);
+      state.audioFeedback.brightness = Math.max(0, state.audioFeedback.brightness * 0.96);
+      state.audioFeedback.roughness = Math.max(0, state.audioFeedback.roughness * 0.96);
+    }
+
+    const speed = 0.25 + state.audioFeedback.loudness * 2 + state.audioFeedback.brightness * 0.8;
+    state.visualPhase += dt * speed;
+
+    // Drift geometry seeds slowly with audio
+    if (state.audioFeedback.loudness > 0.04) {
+      state.geometrySeeds.angleShift = clamp(
+        state.geometrySeeds.angleShift + (state.audioFeedback.brightness - 0.5) * dt * 0.04,
+        0.06,
+        0.38,
+      );
+    }
+
+    drawGeometry(true);
+    state.visualLoopId = requestAnimationFrame(tick);
+  };
+  state.visualLoopId = requestAnimationFrame(tick);
+}
