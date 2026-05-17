@@ -25,8 +25,8 @@ body {
 }
 
 .app {
-  width: min(1280px, calc(100% - 32px));
-  margin: 16px auto 36px;
+  width: min(1280px, calc(100% - 24px));
+  margin: 12px auto 28px;
 }
 
 .layout {
@@ -40,7 +40,7 @@ body {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--panel);
   border: 1px solid var(--line);
   border-radius: 20px;
-  padding: 18px;
+  padding: 14px;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
 }
 
@@ -76,13 +76,13 @@ h1 {
 .hero-actions,
 .layer-controls {
   display: grid;
-  gap: 14px;
+  gap: 9px;
 }
 
 .controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 12px;
+  gap: 8px 10px;
   align-content: start;
 }
 
@@ -93,19 +93,19 @@ h1 {
 
 .layer-controls {
   grid-template-columns: repeat(2, minmax(220px, 1fr));
-  padding-top: 12px;
+  padding-top: 9px;
   border-top: 1px solid var(--line);
 }
 
 .tab-block {
   display: grid;
-  gap: 8px;
+  gap: 5px;
 }
 
 .tab-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 5px;
 }
 
 .tab-row.compact {
@@ -114,8 +114,8 @@ h1 {
 
 .tab-button {
   width: auto;
-  padding: 8px 10px;
-  font-size: 0.84rem;
+  padding: 6px 8px;
+  font-size: 0.78rem;
 }
 
 .tab-button.is-active {
@@ -135,8 +135,12 @@ h1 {
 
 .root-tabs small {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--muted);
+}
+
+.voice-tabs {
+  grid-column: 1 / -1;
 }
 
 button,
@@ -151,7 +155,7 @@ select {
   color: var(--text);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 9px 11px;
   font: inherit;
 }
 
@@ -167,7 +171,7 @@ button:hover {
 
 label {
   display: grid;
-  gap: 7px;
+  gap: 4px;
 }
 
 input[type="range"] {

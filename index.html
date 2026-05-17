@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Geometry Scanning Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260517-12" />
+    <link rel="stylesheet" href="styles.css?v=20260517-13" />
   </head>
   <body>
     <main class="app">
@@ -15,7 +15,7 @@
           <p class="subtle">
             Image scanning shapes sustained harmony, tone, and spatial motion.
           </p>
-          <p class="build-tag">Build scale-roots</p>
+          <p class="build-tag">Build tabs-root-drive</p>
         </div>
         <div class="hero-actions">
           <button id="audioToggle">Start Audio</button>
@@ -33,14 +33,19 @@
             <strong id="bpmValue">128</strong>
           </label>
 
-          <label>
-            <span>Rhythm preset</span>
-            <select id="rhythmPreset"></select>
-          </label>
+          <section class="tab-block">
+            <span>Rhythm</span>
+            <div id="rhythmTabs" class="tab-row"></div>
+          </section>
 
           <section class="tab-block">
             <span>Scale</span>
             <div id="scaleTabs" class="tab-row"></div>
+          </section>
+
+          <section class="tab-block">
+            <span>Root note</span>
+            <div id="rootNoteTabs" class="tab-row compact"></div>
           </section>
 
           <section class="tab-block root-tabs">
@@ -59,25 +64,25 @@
             </div>
           </section>
 
-          <label>
-            <span>Function preset</span>
-            <select id="functionPreset"></select>
-          </label>
+          <section class="tab-block">
+            <span>Function</span>
+            <div id="functionTabs" class="tab-row"></div>
+          </section>
 
-          <label>
+          <section class="tab-block">
             <span>Scan source</span>
-            <select id="visualPreset"></select>
-          </label>
+            <div id="visualTabs" class="tab-row"></div>
+          </section>
 
           <label>
             <span>Image input</span>
             <input id="imageInput" type="file" accept="image/*" />
           </label>
 
-          <label>
+          <section class="tab-block">
             <span>Scan path</span>
-            <select id="scanPathPreset"></select>
-          </label>
+            <div id="scanPathTabs" class="tab-row"></div>
+          </section>
 
           <label>
             <span>Cutoff</span>
@@ -124,8 +129,13 @@
             </label>
             <label>
               <span>Texture</span>
-              <input id="grit" type="range" min="0" max="1.4" step="0.01" value="0.4" />
-              <strong id="gritValue">0.40</strong>
+              <input id="grit" type="range" min="0" max="1.4" step="0.01" value="0.15" />
+              <strong id="gritValue">0.15</strong>
+            </label>
+            <label>
+              <span>Master drive</span>
+              <input id="masterDrive" type="range" min="0" max="2.4" step="0.01" value="0.28" />
+              <strong id="masterDriveValue">0.28</strong>
             </label>
             <label>
               <span>Air mix</span>
@@ -145,18 +155,18 @@
           </div>
 
           <div class="layer-controls">
-            <label>
+            <section class="tab-block voice-tabs">
               <span>OSC1 voice</span>
-              <select id="bassVoice"></select>
-            </label>
-            <label>
+              <div id="osc1VoiceTabs" class="tab-row"></div>
+            </section>
+            <section class="tab-block voice-tabs">
               <span>Drone voice</span>
-              <select id="droneVoice"></select>
-            </label>
-            <label>
+              <div id="droneVoiceTabs" class="tab-row"></div>
+            </section>
+            <section class="tab-block voice-tabs">
               <span>OSC2 voice</span>
-              <select id="percussionVoice"></select>
-            </label>
+              <div id="osc2VoiceTabs" class="tab-row"></div>
+            </section>
             <label>
               <span>OSC1 level</span>
               <input id="bassLevel" type="range" min="0" max="1.2" step="0.01" value="1.08" />
@@ -164,8 +174,8 @@
             </label>
             <label>
               <span>OSC1 drive</span>
-              <input id="osc1Drive" type="range" min="0" max="2.4" step="0.01" value="1.15" />
-              <strong id="osc1DriveValue">1.15</strong>
+              <input id="osc1Drive" type="range" min="0" max="2.4" step="0.01" value="0.55" />
+              <strong id="osc1DriveValue">0.55</strong>
             </label>
             <label>
               <span>OSC1 spread</span>
@@ -184,8 +194,8 @@
             </label>
             <label>
               <span>Drone drive</span>
-              <input id="droneDrive" type="range" min="0" max="2.4" step="0.01" value="0.52" />
-              <strong id="droneDriveValue">0.52</strong>
+              <input id="droneDrive" type="range" min="0" max="2.4" step="0.01" value="0.18" />
+              <strong id="droneDriveValue">0.18</strong>
             </label>
             <label>
               <span>Drone spread</span>
@@ -209,8 +219,8 @@
             </label>
             <label>
               <span>OSC2 drive</span>
-              <input id="osc2Drive" type="range" min="0" max="2.4" step="0.01" value="1.05" />
-              <strong id="osc2DriveValue">1.05</strong>
+              <input id="osc2Drive" type="range" min="0" max="2.4" step="0.01" value="0.5" />
+              <strong id="osc2DriveValue">0.50</strong>
             </label>
             <label>
               <span>OSC2 spread</span>
@@ -247,6 +257,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260517-12"></script>
+    <script src="app.js?v=20260517-13"></script>
   </body>
 </html>
