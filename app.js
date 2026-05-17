@@ -82,6 +82,12 @@ const state = {
   droneBed: null,
   autogenesisActive: false,
   autogenesisId: null,
+  autogenesisCycle: 0,
+  audioFeedback: {
+    loudness: 0,
+    brightness: 0,
+    roughness: 0,
+  },
   uploadedImage: null,
   uploadedImageUrl: null,
   defaultCellImage: null,
@@ -393,6 +399,8 @@ function toggleAutogenesis() {
 function runAutogenesisCycle() {
   if (!state.analyser) return;
   const audioFeatures = getMasterAudioFeatures();
+  state.audioFeedback = audioFeatures;
+  state.autogenesisCycle += 1;
   evolveGeometryFromAudio(audioFeatures);
   rebuildPattern(false);
 }
@@ -437,7 +445,6 @@ function buildLayerPatterns() {
 }
 
 function buildBassPattern() {
-  const rhythm = rhythmPresets[elements.rhythmPreset.value];
   const scale = scalePresets[elements.scalePreset.value];
   const fn = functionPresets[elements.functionPreset.value];
   const { density, edgeDensity, complexity } = state.features;
@@ -445,7 +452,7 @@ function buildBassPattern() {
 
   return Array.from({ length: STEPS }, (_, step) => {
     const scan = getScanSampleForStep(step);
-    const active = rhythm[step] === 1;
+    const active = true;
     const degreeIndex = fn(step, state.features)
       + Math.floor(density * 2.5)
       + Math.floor(scan.brightness * 3)
@@ -453,8 +460,8 @@ function buildBassPattern() {
     const scaleNote = scale[((degreeIndex % scale.length) + scale.length) % scale.length];
     const accentThreshold = 0.28 + edgeDensity * 0.42;
     const slideThreshold = 0.35 + complexity * 0.32;
-    const accent = active && normalizedStepValue(step, density, edgeDensity) > accentThreshold;
-    const slide = active && normalizedStepValue(step, complexity, density) > slideThreshold;
+    const accent = normalizedStepValue(step, density, edgeDensity) > accentThreshold;
+    const slide = normalizedStepValue(step, complexity, density) > slideThreshold;
     const cutoffMod = Math.round(220 + complexity * 500 + edgeDensity * 420 + scan.edge * 700 + (step % 4) * 35);
 
     return {
@@ -465,6 +472,7 @@ function buildBassPattern() {
       note: ROOT_MIDI + scaleNote + octaveOffset,
       voice: elements.bassVoice.value,
       level: Number(elements.bassLevel.value) * 1.18,
+      durationScale: 3.2 + complexity * 1.4,
       pan: scan.pan,
     };
   });
@@ -506,7 +514,7 @@ function buildPercussionPattern() {
       note: ROOT_MIDI + 24 + degree,
       voice: elements.percussionVoice.value,
       level: Number(elements.percussionLevel.value) * 0.72,
-      durationScale: 2.4 + complexity,
+      durationScale: 3.6 + complexity * 1.6,
       pan: scan.pan,
     };
   });
@@ -732,29 +740,74 @@ function drawPlantCells() {
 function drawAutogenesisField() {
   const { width, height } = elements.canvas;
   const { lanes, spacing, angleShift, cells } = state.geometrySeeds;
+  const { loudness, brightness, roughness } = state.audioFeedback;
+  const phase = state.autogenesisCycle * 0.37;
   ctx2d.clearRect(0, 0, width, height);
   ctx2d.fillStyle = "#0b0b0c";
   ctx2d.fillRect(0, 0, width, height);
 
-  ctx2d.strokeStyle = "rgba(244, 244, 238, 0.92)";
-  ctx2d.lineWidth = 2;
+  ctx2d.strokeStyle = "rgba(244, 244, 238, 0.86)";
+  ctx2d.lineWidth = 1.4 + brightness * 2.2;
   for (let lane = 0; lane < lanes; lane += 1) {
     const yBase = (lane / Math.max(1, lanes - 1)) * height;
     ctx2d.beginPath();
     for (let x = 0; x <= width; x += spacing) {
-      const y = yBase + Math.sin(x * 0.018 + lane * 0.7) * spacing * angleShift * 6;
+      const y = yBase
+        + Math.sin(x * 0.018 + lane * 0.7 + phase) * spacing * angleShift * 6
+        + Math.cos(x * 0.011 - phase * 1.3) * roughness * 24;
       if (x === 0) ctx2d.moveTo(x, y);
       else ctx2d.lineTo(x, y);
     }
     ctx2d.stroke();
   }
 
+  ctx2d.strokeStyle = `rgba(255, 255, 255, ${0.18 + loudness * 0.4})`;
+  ctx2d.lineWidth = 1;
+  const spokes = 4 + Math.round(brightness * 12);
+  for (let i = 0; i < spokes; i += 1) {
+    const angle = (i / spokes) * Math.PI * 2 + phase;
+    ctx2d.beginPath();
+    ctx2d.moveTo(width / 2, height / 2);
+    ctx2d.lineTo(
+      width / 2 + Math.cos(angle) * width * (0.22 + loudness * 0.34),
+      height / 2 + Math.sin(angle) * height * (0.22 + roughness * 0.34),
+    );
+    ctx2d.stroke();
+  }
+
+  ctx2d.strokeStyle = `rgba(244, 244, 238, ${0.38 + roughness * 0.5})`;
   for (let i = 0; i < cells; i += 1) {
     const x = randomSeeded(i * 19.7 + lanes) * width;
     const y = randomSeeded(i * 31.1 + spacing) * height;
     const radius = 8 + randomSeeded(i * 47.3 + cells) * (spacing * 1.8);
     ctx2d.beginPath();
-    ctx2d.arc(x, y, radius, 0, Math.PI * 2);
+    const sides = 4 + Math.round(randomSeeded(i * 13.9 + state.autogenesisCycle) * (4 + roughness * 6));
+    for (let side = 0; side <= sides; side += 1) {
+      const angle = (side / sides) * Math.PI * 2 + phase * (0.2 + brightness);
+      const wobble = 0.72 + randomSeeded(i * 71.3 + side + state.autogenesisCycle) * (0.3 + roughness * 0.5);
+      const px = x + Math.cos(angle) * radius * wobble;
+      const py = y + Math.sin(angle) * radius * wobble;
+      if (side === 0) ctx2d.moveTo(px, py);
+      else ctx2d.lineTo(px, py);
+    }
+    ctx2d.closePath();
+    ctx2d.stroke();
+  }
+
+  ctx2d.strokeStyle = `rgba(141, 249, 168, ${0.12 + brightness * 0.28})`;
+  const bands = 2 + Math.round(loudness * 6);
+  for (let band = 0; band < bands; band += 1) {
+    const offset = ((band + 1) / (bands + 1)) * width;
+    ctx2d.beginPath();
+    ctx2d.moveTo(offset, 0);
+    ctx2d.bezierCurveTo(
+      offset - roughness * 160,
+      height * 0.25,
+      offset + brightness * 180,
+      height * 0.75,
+      offset - loudness * 120,
+      height,
+    );
     ctx2d.stroke();
   }
 }
