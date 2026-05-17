@@ -1306,7 +1306,7 @@ function restartDroneBed() {
 
 function createDroneBed(audioContext, notes, controls) {
   const output = audioContext.createGain();
-  const droneNormalization = 1 / Math.sqrt(notes.length * 2);
+  const droneNormalization = 1 / (Math.sqrt(notes.length * 2) * 3);
   output.gain.value = controls.level * droneNormalization;
   const filter = audioContext.createBiquadFilter();
   filter.type = controls.voice === "Ritual Chorus" ? "bandpass" : "lowpass";
