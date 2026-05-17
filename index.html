@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Geometry Scanning Generator</title>
-    <link rel="stylesheet" href="styles.css?v=20260517-5" />
+    <link rel="stylesheet" href="styles.css?v=20260517-6" />
   </head>
   <body>
     <main class="app">
@@ -140,9 +140,34 @@
               <strong id="bassLevelValue">1.08</strong>
             </label>
             <label>
+              <span>OSC1 drive</span>
+              <input id="osc1Drive" type="range" min="0" max="2.4" step="0.01" value="1.15" />
+              <strong id="osc1DriveValue">1.15</strong>
+            </label>
+            <label>
+              <span>OSC1 spread</span>
+              <input id="osc1Spread" type="range" min="0" max="40" step="1" value="12" />
+              <strong id="osc1SpreadValue">12</strong>
+            </label>
+            <label>
+              <span>OSC1 motion</span>
+              <input id="osc1Motion" type="range" min="0" max="1.5" step="0.01" value="0.85" />
+              <strong id="osc1MotionValue">0.85</strong>
+            </label>
+            <label>
               <span>Drone level</span>
               <input id="droneLevel" type="range" min="0" max="1.2" step="0.01" value="0.02" />
               <strong id="droneLevelValue">0.02</strong>
+            </label>
+            <label>
+              <span>Drone drive</span>
+              <input id="droneDrive" type="range" min="0" max="2.4" step="0.01" value="0.52" />
+              <strong id="droneDriveValue">0.52</strong>
+            </label>
+            <label>
+              <span>Drone spread</span>
+              <input id="droneSpread" type="range" min="0" max="40" step="1" value="8" />
+              <strong id="droneSpreadValue">8</strong>
             </label>
             <label>
               <span>Drone LFO rate</span>
@@ -158,6 +183,21 @@
               <span>OSC2 level</span>
               <input id="percussionLevel" type="range" min="0" max="1.2" step="0.01" value="0.56" />
               <strong id="percussionLevelValue">0.56</strong>
+            </label>
+            <label>
+              <span>OSC2 drive</span>
+              <input id="osc2Drive" type="range" min="0" max="2.4" step="0.01" value="1.05" />
+              <strong id="osc2DriveValue">1.05</strong>
+            </label>
+            <label>
+              <span>OSC2 spread</span>
+              <input id="osc2Spread" type="range" min="0" max="40" step="1" value="16" />
+              <strong id="osc2SpreadValue">16</strong>
+            </label>
+            <label>
+              <span>OSC2 motion</span>
+              <input id="osc2Motion" type="range" min="0" max="1.5" step="0.01" value="1.05" />
+              <strong id="osc2MotionValue">1.05</strong>
             </label>
           </div>
         </div>
@@ -184,6 +224,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260517-5"></script>
+    <script src="app.js?v=20260517-6"></script>
   </body>
 </html>

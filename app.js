@@ -137,14 +137,30 @@ const elements = {
   percussionVoice: document.querySelector("#percussionVoice"),
   bassLevel: document.querySelector("#bassLevel"),
   bassLevelValue: document.querySelector("#bassLevelValue"),
+  osc1Drive: document.querySelector("#osc1Drive"),
+  osc1DriveValue: document.querySelector("#osc1DriveValue"),
+  osc1Spread: document.querySelector("#osc1Spread"),
+  osc1SpreadValue: document.querySelector("#osc1SpreadValue"),
+  osc1Motion: document.querySelector("#osc1Motion"),
+  osc1MotionValue: document.querySelector("#osc1MotionValue"),
   droneLevel: document.querySelector("#droneLevel"),
   droneLevelValue: document.querySelector("#droneLevelValue"),
+  droneDrive: document.querySelector("#droneDrive"),
+  droneDriveValue: document.querySelector("#droneDriveValue"),
+  droneSpread: document.querySelector("#droneSpread"),
+  droneSpreadValue: document.querySelector("#droneSpreadValue"),
   droneLfoRate: document.querySelector("#droneLfoRate"),
   droneLfoRateValue: document.querySelector("#droneLfoRateValue"),
   droneLfoDepth: document.querySelector("#droneLfoDepth"),
   droneLfoDepthValue: document.querySelector("#droneLfoDepthValue"),
   percussionLevel: document.querySelector("#percussionLevel"),
   percussionLevelValue: document.querySelector("#percussionLevelValue"),
+  osc2Drive: document.querySelector("#osc2Drive"),
+  osc2DriveValue: document.querySelector("#osc2DriveValue"),
+  osc2Spread: document.querySelector("#osc2Spread"),
+  osc2SpreadValue: document.querySelector("#osc2SpreadValue"),
+  osc2Motion: document.querySelector("#osc2Motion"),
+  osc2MotionValue: document.querySelector("#osc2MotionValue"),
   densityValue: document.querySelector("#densityValue"),
   edgeDensityValue: document.querySelector("#edgeDensityValue"),
   complexityValue: document.querySelector("#complexityValue"),
@@ -186,7 +202,7 @@ function bindControls() {
   });
   elements.imageInput.addEventListener("change", handleImageUpload);
 
-  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "toneBrightness", "grit", "noiseMix", "clickAmount", "bassLevel", "droneLevel", "droneLfoRate", "droneLfoDepth", "percussionLevel"].forEach((id) => {
+  ["bpm", "cutoff", "resonance", "decay", "accent", "slide", "toneBrightness", "grit", "noiseMix", "clickAmount", "bassLevel", "osc1Drive", "osc1Spread", "osc1Motion", "droneLevel", "droneDrive", "droneSpread", "droneLfoRate", "droneLfoDepth", "percussionLevel", "osc2Drive", "osc2Spread", "osc2Motion"].forEach((id) => {
     elements[id].addEventListener("input", () => {
       syncLabels();
       rebuildPattern(false);
@@ -214,10 +230,18 @@ function syncLabels() {
   elements.noiseMixValue.textContent = Number(elements.noiseMix.value).toFixed(2);
   elements.clickAmountValue.textContent = Number(elements.clickAmount.value).toFixed(2);
   elements.bassLevelValue.textContent = Number(elements.bassLevel.value).toFixed(2);
+  elements.osc1DriveValue.textContent = Number(elements.osc1Drive.value).toFixed(2);
+  elements.osc1SpreadValue.textContent = elements.osc1Spread.value;
+  elements.osc1MotionValue.textContent = Number(elements.osc1Motion.value).toFixed(2);
   elements.droneLevelValue.textContent = Number(elements.droneLevel.value).toFixed(2);
+  elements.droneDriveValue.textContent = Number(elements.droneDrive.value).toFixed(2);
+  elements.droneSpreadValue.textContent = elements.droneSpread.value;
   elements.droneLfoRateValue.textContent = Number(elements.droneLfoRate.value).toFixed(2);
   elements.droneLfoDepthValue.textContent = elements.droneLfoDepth.value;
   elements.percussionLevelValue.textContent = Number(elements.percussionLevel.value).toFixed(2);
+  elements.osc2DriveValue.textContent = Number(elements.osc2Drive.value).toFixed(2);
+  elements.osc2SpreadValue.textContent = elements.osc2Spread.value;
+  elements.osc2MotionValue.textContent = Number(elements.osc2Motion.value).toFixed(2);
 
   if (state.droneBed) {
     state.droneBed.update(getDroneControls());
@@ -228,9 +252,9 @@ async function startAudio() {
   if (!state.audioContext) {
     state.audioContext = new AudioContext();
     state.synths = {
-      bass: createVoiceEngine(state.audioContext),
-      drone: createVoiceEngine(state.audioContext),
-      percussion: createVoiceEngine(state.audioContext),
+      bass: createVoiceEngine(state.audioContext, "bass"),
+      drone: createVoiceEngine(state.audioContext, "drone"),
+      percussion: createVoiceEngine(state.audioContext, "percussion"),
     };
   }
 
@@ -293,6 +317,12 @@ function getSynthControls() {
     grit: Number(elements.grit.value),
     noiseMix: Number(elements.noiseMix.value),
     clickAmount: Number(elements.clickAmount.value),
+    osc1Drive: Number(elements.osc1Drive.value),
+    osc1Spread: Number(elements.osc1Spread.value),
+    osc1Motion: Number(elements.osc1Motion.value),
+    osc2Drive: Number(elements.osc2Drive.value),
+    osc2Spread: Number(elements.osc2Spread.value),
+    osc2Motion: Number(elements.osc2Motion.value),
   };
 }
 
@@ -305,6 +335,8 @@ function getDroneControls() {
     lfoDepth: Number(elements.droneLfoDepth.value),
     voice: elements.droneVoice.value,
     toneBrightness: Number(elements.toneBrightness.value),
+    drive: Number(elements.droneDrive.value),
+    spread: Number(elements.droneSpread.value),
   };
 }
 
@@ -953,7 +985,7 @@ function randomSeeded(value) {
   return x - Math.floor(x);
 }
 
-function createVoiceEngine(audioContext) {
+function createVoiceEngine(audioContext, layer) {
   const filter = audioContext.createBiquadFilter();
   filter.type = "lowpass";
   filter.frequency.value = 900;
@@ -983,13 +1015,16 @@ function createVoiceEngine(audioContext) {
       filter.frequency.exponentialRampToValueAtTime(Math.max(140, targetCutoff * voiceProfile.releaseCutoff * controls.toneBrightness), time + noteLength);
       filter.Q.setValueAtTime(controls.resonance * voiceProfile.qScale, time);
 
-      const source = createVoiceSource(audioContext, step.voice, frequency, time, noteLength, step.slide, controls.slide, lastFrequency, controls);
+      const layerDrive = layer === "bass" ? controls.osc1Drive : layer === "percussion" ? controls.osc2Drive : controls.grit;
+      const layerSpread = layer === "bass" ? controls.osc1Spread : layer === "percussion" ? controls.osc2Spread : 0;
+      const layerMotion = layer === "bass" ? controls.osc1Motion : layer === "percussion" ? controls.osc2Motion : 0;
+      const source = createVoiceSource(audioContext, step.voice, frequency, time, noteLength, step.slide, controls.slide, lastFrequency, controls, layerSpread);
       const amp = audioContext.createGain();
       const shaper = audioContext.createWaveShaper();
       const panner = audioContext.createStereoPanner();
       const texture = createSustainedTexture(audioContext, noteLength, controls.noiseMix * (0.08 + scanSample.edge * 0.24));
-      panner.pan.setValueAtTime(step.pan ?? scanSample.pan ?? 0, time);
-      shaper.curve = createSoftClipCurve(controls.grit);
+      panner.pan.setValueAtTime(clamp((step.pan ?? scanSample.pan ?? 0) * layerMotion, -1, 1), time);
+      shaper.curve = createSoftClipCurve(controls.grit + layerDrive);
       shaper.oversample = "2x";
       amp.gain.setValueAtTime(0.0001, time);
       amp.gain.exponentialRampToValueAtTime(attackGain, time + 0.005);
@@ -1008,7 +1043,7 @@ function createVoiceEngine(audioContext) {
   };
 }
 
-function createVoiceSource(audioContext, voice, frequency, time, noteLength, slide, slideTime, lastFrequency, controls) {
+function createVoiceSource(audioContext, voice, frequency, time, noteLength, slide, slideTime, lastFrequency, controls, spread = 0) {
   switch (voice) {
     case "Bronze Cluster":
       return createLayeredOscillators(audioContext, [
@@ -1018,14 +1053,14 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
         { type: "triangle", ratio: 1.78, gain: 0.16, detune: -5 },
         { type: "sine", ratio: 2.41, gain: 0.14 },
         { type: "sine", ratio: 3.13, gain: 0.1, detune: 7 },
-      ], frequency, time, slide, slideTime, lastFrequency);
+      ], frequency, time, slide, slideTime, lastFrequency, spread);
     case "Industrial Metal":
       return createLayeredOscillators(audioContext, [
         { type: "sawtooth", ratio: 1, gain: 0.42 },
         { type: "square", ratio: 1.414, gain: 0.2 },
         { type: "sine", ratio: 2.71, gain: 0.22 },
         { type: "triangle", ratio: 4.11, gain: 0.14 },
-      ], frequency, time, slide, slideTime, lastFrequency);
+      ], frequency, time, slide, slideTime, lastFrequency, spread);
     case "Sheet Metal":
       return createLayeredOscillators(audioContext, [
         { type: "triangle", ratio: 1, gain: 0.24, detune: -4 },
@@ -1034,7 +1069,7 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
         { type: "sine", ratio: 3.89, gain: 0.18 },
         { type: "sine", ratio: 5.43, gain: 0.14 },
         { type: "sine", ratio: 7.17, gain: 0.08 },
-      ], frequency, time, slide, slideTime, lastFrequency);
+      ], frequency, time, slide, slideTime, lastFrequency, spread);
     case "Physical Noise":
       return createPhysicalNoise(audioContext, frequency, noteLength, time);
     case "Data Click":
@@ -1053,7 +1088,7 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
         { type: "sine", ratio: 2.08, gain: 0.16 },
         { type: "sine", ratio: 2.71, gain: 0.12 },
         { type: "triangle", ratio: 3.43, gain: 0.08 },
-      ], frequency * 0.5, time, slide, slideTime, lastFrequency * 0.5);
+      ], frequency * 0.5, time, slide, slideTime, lastFrequency * 0.5, spread);
     case "Gamelan Metallophone":
       return createLayeredOscillators(audioContext, [
         { type: "sine", ratio: 1, gain: 0.28, detune: -3 },
@@ -1062,9 +1097,9 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
         { type: "sine", ratio: 2.03, gain: 0.16 },
         { type: "sine", ratio: 2.77, gain: 0.12 },
         { type: "sine", ratio: 3.76, gain: 0.1 },
-      ], frequency, time, slide, slideTime, lastFrequency);
+      ], frequency, time, slide, slideTime, lastFrequency, spread);
     case "Ritual Chorus":
-      return createRitualChorus(audioContext, frequency, time, slide, slideTime, lastFrequency);
+      return createRitualChorus(audioContext, frequency, time, slide, slideTime, lastFrequency, spread);
     case "Bamboo Thump":
       return createBambooThump(audioContext, frequency, noteLength, time);
     case "Pipe Organ":
@@ -1072,25 +1107,25 @@ function createVoiceSource(audioContext, voice, frequency, time, noteLength, sli
         { type: "sine", ratio: 1, gain: 0.7 },
         { type: "sine", ratio: 2, gain: 0.35 },
         { type: "sine", ratio: 3, gain: 0.18 },
-      ], frequency, time, slide, slideTime, lastFrequency);
+      ], frequency, time, slide, slideTime, lastFrequency, spread);
     case "Fender Rhodes":
       return createLayeredOscillators(audioContext, [
         { type: "sine", ratio: 1, gain: 0.75 },
         { type: "sine", ratio: 2.01, gain: 0.24 },
         { type: "triangle", ratio: 4, gain: 0.08 },
-      ], frequency, time, slide, slideTime, lastFrequency);
+      ], frequency, time, slide, slideTime, lastFrequency, spread);
     case "Prophet":
       return createLayeredOscillators(audioContext, [
         { type: "sawtooth", ratio: 1, gain: 0.55 },
         { type: "sawtooth", ratio: 1.01, gain: 0.45 },
-      ], frequency, time, slide, slideTime, lastFrequency);
+      ], frequency, time, slide, slideTime, lastFrequency, spread);
     case "Voice":
-      return createFormantVoice(audioContext, frequency, time, slide, slideTime, lastFrequency, false);
+      return createFormantVoice(audioContext, frequency, time, slide, slideTime, lastFrequency, false, spread);
     case "Kecak":
-      return createFormantVoice(audioContext, frequency * 1.5, time, false, 0, lastFrequency, true);
+      return createFormantVoice(audioContext, frequency * 1.5, time, false, 0, lastFrequency, true, spread);
     case "Acid Bass":
     default:
-      return createLayeredOscillators(audioContext, [{ type: "sawtooth", ratio: 1, gain: 1 }], frequency, time, slide, slideTime, lastFrequency);
+      return createLayeredOscillators(audioContext, [{ type: "sawtooth", ratio: 1, gain: 1 }], frequency, time, slide, slideTime, lastFrequency, spread);
   }
 }
 
@@ -1121,14 +1156,14 @@ function getVoiceProfile(voice) {
   }
 }
 
-function createLayeredOscillators(audioContext, layers, frequency, time, slide, slideTime, lastFrequency) {
+function createLayeredOscillators(audioContext, layers, frequency, time, slide, slideTime, lastFrequency, spread = 0) {
   const output = audioContext.createGain();
   const energy = layers.reduce((sum, layer) => sum + (layer.gain ** 2), 0);
   output.gain.value = energy > 0 ? 0.72 / Math.sqrt(energy) : 1;
   const nodes = layers.map((layer) => {
     const oscillator = audioContext.createOscillator();
     oscillator.type = layer.type;
-    oscillator.detune.value = layer.detune ?? 0;
+    oscillator.detune.value = (layer.detune ?? 0) + centeredSpread(index, layers.length, spread);
     const gain = audioContext.createGain();
     gain.gain.value = layer.gain;
     oscillator.connect(gain);
@@ -1318,7 +1353,7 @@ function createBambooThump(audioContext, frequency, noteLength, time) {
   };
 }
 
-function createRitualChorus(audioContext, frequency, time, slide, slideTime, lastFrequency) {
+function createRitualChorus(audioContext, frequency, time, slide, slideTime, lastFrequency, spread = 0) {
   return createLayeredOscillators(audioContext, [
     { type: "sawtooth", ratio: 1, gain: 0.18, detune: -11 },
     { type: "sawtooth", ratio: 1, gain: 0.18, detune: 9 },
@@ -1326,7 +1361,7 @@ function createRitualChorus(audioContext, frequency, time, slide, slideTime, las
     { type: "triangle", ratio: 1.5, gain: 0.14, detune: -5 },
     { type: "sine", ratio: 2, gain: 0.12, detune: 4 },
     { type: "sine", ratio: 2.98, gain: 0.08, detune: -7 },
-  ], frequency, time, slide, slideTime, lastFrequency);
+  ], frequency, time, slide, slideTime, lastFrequency, spread);
 }
 
 function startDroneBed() {
@@ -1353,16 +1388,20 @@ function restartDroneBed() {
 
 function createDroneBed(audioContext, notes, controls) {
   const output = audioContext.createGain();
+  const shaper = audioContext.createWaveShaper();
   const droneNormalization = 1 / (Math.sqrt(notes.length * 2) * 9);
   output.gain.value = controls.level * droneNormalization;
+  shaper.curve = createSoftClipCurve(controls.drive);
+  shaper.oversample = "2x";
   const filter = audioContext.createBiquadFilter();
   filter.type = controls.voice === "Ritual Chorus" ? "bandpass" : "lowpass";
   filter.frequency.value = controls.cutoff * 0.78 * controls.toneBrightness;
   filter.Q.value = controls.resonance * 0.75;
-  output.connect(filter);
+  output.connect(shaper);
+  shaper.connect(filter);
   filter.connect(audioContext.destination);
 
-  const oscillators = notes.flatMap((note, index) => createDroneOscillatorSet(audioContext, note, controls.voice, index));
+  const oscillators = notes.flatMap((note, index) => createDroneOscillatorSet(audioContext, note, controls.voice, index, controls.spread));
   oscillators.forEach((node) => node.connect(output));
 
   const lfo = audioContext.createOscillator();
@@ -1385,6 +1424,7 @@ function createDroneBed(audioContext, notes, controls) {
     },
     update(nextControls) {
       output.gain.setTargetAtTime(nextControls.level * droneNormalization, audioContext.currentTime, 0.05);
+      shaper.curve = createSoftClipCurve(nextControls.drive);
       lfo.frequency.setTargetAtTime(nextControls.lfoRate, audioContext.currentTime, 0.05);
       lfoGain.gain.setTargetAtTime(nextControls.lfoDepth, audioContext.currentTime, 0.05);
       filter.frequency.setTargetAtTime(nextControls.cutoff * 0.78 * nextControls.toneBrightness, audioContext.currentTime, 0.05);
@@ -1397,7 +1437,7 @@ function createDroneBed(audioContext, notes, controls) {
   };
 }
 
-function createDroneOscillatorSet(audioContext, note, voice, index) {
+function createDroneOscillatorSet(audioContext, note, voice, index, spread = 0) {
   const frequency = midiToFrequency(note);
   const recipes = voice === "Bit Noise"
     ? [
@@ -1425,13 +1465,19 @@ function createDroneOscillatorSet(audioContext, note, voice, index) {
           { type: "triangle", ratio: 2, detune: 3 - index * 3 },
         ];
 
-  return recipes.map((recipe) => {
+  return recipes.map((recipe, recipeIndex) => {
     const oscillator = audioContext.createOscillator();
     oscillator.type = recipe.type;
     oscillator.frequency.value = frequency * recipe.ratio;
-    oscillator.detune.value = recipe.detune;
+    oscillator.detune.value = recipe.detune + centeredSpread(recipeIndex, recipes.length, spread);
     return oscillator;
   });
+}
+
+function centeredSpread(index, count, spread) {
+  if (count <= 1 || spread === 0) return 0;
+  const normalized = (index / (count - 1)) * 2 - 1;
+  return normalized * spread;
 }
 
 function createFmSource(audioContext, frequency, time, slide, slideTime, lastFrequency) {
@@ -1458,7 +1504,7 @@ function createFmSource(audioContext, frequency, time, slide, slideTime, lastFre
   };
 }
 
-function createFormantVoice(audioContext, frequency, time, slide, slideTime, lastFrequency, percussive) {
+function createFormantVoice(audioContext, frequency, time, slide, slideTime, lastFrequency, percussive, spread = 0) {
   const source = createLayeredOscillators(
     audioContext,
     [
@@ -1470,6 +1516,7 @@ function createFormantVoice(audioContext, frequency, time, slide, slideTime, las
     slide,
     slideTime,
     lastFrequency,
+    spread,
   );
   const formantA = audioContext.createBiquadFilter();
   const formantB = audioContext.createBiquadFilter();
