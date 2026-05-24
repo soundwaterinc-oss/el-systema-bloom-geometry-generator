@@ -1,3 +1,8 @@
+// 葉：場と繋ぐ。fallback で単体動作も維持
+if (typeof window.registerElSystemaInstrument !== "function") {
+  window.registerElSystemaInstrument = function(){};
+}
+
 const STEPS = 16;
 const ROOT_MIDI = 36;
 const rootNotes = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
@@ -413,6 +418,108 @@ async function startAudio() {
   }
 
   elements.audioToggle.textContent = "Audio Ready";
+
+  // 葉：場と繋ぐ（audioContext と masterBus が確定した後で呼ぶ）
+  if (!window._elSystemaRegistered_geometryScanner) {
+    window._elSystemaRegistered_geometryScanner = true;
+    registerElSystemaInstrument({
+      id: "geometry-scanner",
+      audioContext: state.audioContext,
+      outputNode: state.masterBus,
+      sharedAnalyser: state.analyser,
+
+      play: () => {
+        if (!state.isPlaying) toggleTransport();
+      },
+      stop: () => {
+        if (state.isPlaying) toggleTransport();
+      },
+
+      setParam: (name, value) => {
+        // 1) selected* 系（selectedScale 等）：
+        if (name in state && /^selected/.test(name)) {
+          state[name] = value;
+          rebuildPattern(name);
+          return;
+        }
+        // 2) slider 系（bpm, cutoff, droneLevel 等）：
+        const el = document.getElementById(name) || document.querySelector(`[name="${name}"]`);
+        if (el) {
+          el.value = value;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          return;
+        }
+        // 3) どこにも該当しない時は黙って捨てる（throw しない）
+      },
+
+      ramp: (name, from, to, durationSec) => {
+        // rAF で線形補間。同パラメータへの ramp は後勝ち（前のを中止）
+        const dur = Math.max(0.001, durationSec);
+        const startMs = performance.now();
+        const tick = () => {
+          const elapsedSec = (performance.now() - startMs) / 1000;
+          const k = Math.min(1, elapsedSec / dur);
+          const v = from + (to - from) * k;
+          const el = document.getElementById(name) || document.querySelector(`[name="${name}"]`);
+          if (el) { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); }
+          if (k < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      },
+
+      loadPreset: (preset) => {
+        if (!preset || typeof preset !== "object") return;
+        for (const [k, v] of Object.entries(preset)) {
+          try {
+            if (typeof v === "object" && v !== null) {
+              // selectedVoices などのネスト
+              for (const [k2, v2] of Object.entries(v)) {
+                const nested = `${k}.${k2}`;
+                if (k === "selectedVoices" && state.selectedVoices) {
+                  state.selectedVoices[k2] = v2;
+                }
+              }
+            } else {
+              // 平キーは setParam 相当
+              registerElSystemaInstrument.__last?.setParam?.(k, v);
+            }
+          } catch (_) {}
+        }
+        rebuildPattern("preset");
+      },
+
+      snapshot: () => {
+        // 主要 state を JSON 可能な形で返す
+        return {
+          bpm: Number(elements.bpm.value),
+          cutoff: Number(elements.cutoff.value),
+          resonance: Number(elements.resonance.value),
+          decay: Number(elements.decay.value),
+          accent: Number(elements.accent.value),
+          slide: Number(elements.slide.value),
+          toneBrightness: Number(elements.toneBrightness.value),
+          grit: Number(elements.grit.value),
+          masterDrive: Number(elements.masterDrive.value),
+          noiseMix: Number(elements.noiseMix.value),
+          clickAmount: Number(elements.clickAmount.value),
+          harmonics: Number(elements.harmonics.value),
+          bassLevel: Number(elements.bassLevel.value),
+          droneLevel: Number(elements.droneLevel.value),
+          percussionLevel: Number(elements.percussionLevel.value),
+          osc1Drive: Number(elements.osc1Drive.value),
+          droneDrive: Number(elements.droneDrive.value),
+          osc2Drive: Number(elements.osc2Drive.value),
+          selectedScale: state.selectedScale,
+          selectedRootNote: state.selectedRootNote,
+          selectedRhythm: state.selectedRhythm,
+          selectedFunction: state.selectedFunction,
+          selectedVisual: state.selectedVisual,
+          selectedScanPath: state.selectedScanPath,
+          selectedVoices: { ...state.selectedVoices },
+        };
+      },
+    });
+  }
 }
 
 async function toggleTransport() {
