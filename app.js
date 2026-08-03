@@ -3,6 +3,22 @@ if (typeof window.registerElSystemaInstrument !== "function") {
   window.registerElSystemaInstrument = function(){};
 }
 
+const FIELD_ON = /[?&#]field/.test(location.href);
+let schedulerWorker = null;
+const fieldClock = {
+  start() {
+    if (!schedulerWorker) {
+      const source = "let t;onmessage=e=>{clearInterval(t);if(e.data==='start')t=setInterval(()=>postMessage(0),25)}";
+      const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+      schedulerWorker = new Worker(url);
+      schedulerWorker.onmessage = () => schedule();
+    }
+    schedulerWorker.postMessage("start");
+  },
+  stop() { schedulerWorker?.postMessage("stop"); },
+};
+let fieldVolume = 1;
+
 const STEPS = 16;
 const ROOT_MIDI = 36;
 const rootNotes = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
@@ -395,6 +411,75 @@ function syncLabels() {
   }
 }
 
+function setGeometryControl(name, value) {
+  const el = document.getElementById(name) || document.querySelector(`[name="${name}"]`);
+  if (!el) return false;
+  el.value = value;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
+}
+
+function setGeometryValues(values) {
+  Object.entries(values).forEach(([name, value]) => {
+    const el = document.getElementById(name);
+    if (el) el.value = value;
+  });
+  syncLabels();
+}
+
+function loadGeometryPreset(preset) {
+  if (!preset || typeof preset !== "object") return;
+  let needsRebuild = false;
+  Object.entries(preset).forEach(([name, value]) => {
+    if (name === "selectedVoices" && value && typeof value === "object") {
+      needsRebuild ||= JSON.stringify(state.selectedVoices) !== JSON.stringify(value);
+      Object.assign(state.selectedVoices, value);
+    } else if (name === "volume") {
+      elsysMacro("volume", value);
+    } else if (name in state && /^selected/.test(name)) {
+      needsRebuild ||= state[name] !== value;
+      state[name] = value;
+    } else {
+      const el = document.getElementById(name);
+      if (el) {
+        if (name === "harmonics" && Number(el.value) !== Number(value)) needsRebuild = true;
+        el.value = value;
+      }
+    }
+  });
+  syncLabels();
+  if (needsRebuild) rebuildPattern("preset");
+}
+
+function elsysMacro(name, value) {
+  const v = Math.max(0, Math.min(1, Number(value) || 0));
+  if (name === "macro.a") {
+    setGeometryValues({ bpm: 90 + 70 * v, bassLevel: 1.2 * v, droneLevel: 1.2 * v, percussionLevel: 1.2 * v });
+  } else if (name === "macro.b") {
+    setGeometryValues({ cutoff: 180 + 2420 * v, resonance: 1 + 23 * v, toneBrightness: 0.2 + 2.2 * v, grit: 1.4 * v });
+  } else if (name === "macro.c") {
+    setGeometryValues({ osc1Spread: 40 * v, droneSpread: 40 * v, osc2Spread: 40 * v, osc1Motion: 1.5 * v, osc2Motion: 1.5 * v, droneLfoDepth: 1200 * v });
+  } else if (name === "volume") {
+    fieldVolume = v;
+    if (state.audioContext && state.masterBus) {
+      state.masterBus.gain.setTargetAtTime(0.08 * v * v, state.audioContext.currentTime, 0.02);
+    }
+  }
+}
+
+function setGeometryParam(name, value) {
+  if (/^(macro\.[abc]|volume)$/.test(name)) {
+    elsysMacro(name, value);
+    return;
+  }
+  if (name in state && /^selected/.test(name)) {
+    state[name] = value;
+    rebuildPattern(name);
+    return;
+  }
+  setGeometryControl(name, value);
+}
+
 async function startAudio() {
   if (!state.audioContext) {
     state.audioContext = new AudioContext();
@@ -420,10 +505,10 @@ async function startAudio() {
   elements.audioToggle.textContent = "Audio Ready";
 
   // 葉：場と繋ぐ（audioContext と masterBus が確定した後で呼ぶ）
-  if (!window._elSystemaRegistered_geometryScanner) {
+  if (FIELD_ON && !window._elSystemaRegistered_geometryScanner) {
     window._elSystemaRegistered_geometryScanner = true;
     registerElSystemaInstrument({
-      id: "geometry-scanner",
+      id: "geometry-generator",
       audioContext: state.audioContext,
       outputNode: state.masterBus,
       sharedAnalyser: state.analyser,
@@ -435,22 +520,7 @@ async function startAudio() {
         if (state.isPlaying) toggleTransport();
       },
 
-      setParam: (name, value) => {
-        // 1) selected* 系（selectedScale 等）：
-        if (name in state && /^selected/.test(name)) {
-          state[name] = value;
-          rebuildPattern(name);
-          return;
-        }
-        // 2) slider 系（bpm, cutoff, droneLevel 等）：
-        const el = document.getElementById(name) || document.querySelector(`[name="${name}"]`);
-        if (el) {
-          el.value = value;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          return;
-        }
-        // 3) どこにも該当しない時は黙って捨てる（throw しない）
-      },
+      setParam: (name, value) => setGeometryParam(name, value),
 
       ramp: (name, from, to, durationSec) => {
         // rAF で線形補間。同パラメータへの ramp は後勝ち（前のを中止）
@@ -467,26 +537,7 @@ async function startAudio() {
         requestAnimationFrame(tick);
       },
 
-      loadPreset: (preset) => {
-        if (!preset || typeof preset !== "object") return;
-        for (const [k, v] of Object.entries(preset)) {
-          try {
-            if (typeof v === "object" && v !== null) {
-              // selectedVoices などのネスト
-              for (const [k2, v2] of Object.entries(v)) {
-                const nested = `${k}.${k2}`;
-                if (k === "selectedVoices" && state.selectedVoices) {
-                  state.selectedVoices[k2] = v2;
-                }
-              }
-            } else {
-              // 平キーは setParam 相当
-              registerElSystemaInstrument.__last?.setParam?.(k, v);
-            }
-          } catch (_) {}
-        }
-        rebuildPattern("preset");
-      },
+      loadPreset: (preset) => loadGeometryPreset(preset),
 
       snapshot: () => {
         // 主要 state を JSON 可能な形で返す
@@ -516,6 +567,7 @@ async function startAudio() {
           selectedVisual: state.selectedVisual,
           selectedScanPath: state.selectedScanPath,
           selectedVoices: { ...state.selectedVoices },
+          volume: fieldVolume,
         };
       },
     });
@@ -535,9 +587,10 @@ async function toggleTransport() {
     state.nextStepTime = state.audioContext.currentTime + 0.08;
     startDroneBed();
     startHarmonicBeds();
-    state.schedulerId = window.setInterval(schedule, 25);
+    schedule();
+    fieldClock.start();
   } else {
-    window.clearInterval(state.schedulerId);
+    fieldClock.stop();
     state.schedulerId = null;
     stopDroneBed();
     stopHarmonicBeds();
@@ -546,7 +599,7 @@ async function toggleTransport() {
 }
 
 function schedule() {
-  const lookAhead = 0.12;
+  const lookAhead = document.hidden ? 1.5 : 0.12;
   while (state.nextStepTime < state.audioContext.currentTime + lookAhead) {
     const scanSample = getScanSampleForStep(state.stepIndex);
     if (state.droneBed) {
@@ -2273,6 +2326,7 @@ rebuildPattern();
 loadDefaultCellImage();
 loadPlantSpiralImage();
 startVisualLoop();
+if (FIELD_ON) startAudio().catch(console.error);
 
 function startVisualLoop() {
   if (state.visualLoopId) return;
