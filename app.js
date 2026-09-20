@@ -498,13 +498,8 @@ async function startAudio() {
     };
   }
 
-  if (state.audioContext.state !== "running") {
-    await state.audioContext.resume();
-  }
-
-  elements.audioToggle.textContent = "Audio Ready";
-
-  // 葉：場と繋ぐ（audioContext と masterBus が確定した後で呼ぶ）
+  // 葉：場と繋ぐ。resume() は自動再生制限で永久 pending になり得るので、その前に登録する
+  // （卓の ▶ → play で resume を試み、起きなければ接続層が画面に案内を出す）
   if (FIELD_ON && !window._elSystemaRegistered_geometryScanner) {
     window._elSystemaRegistered_geometryScanner = true;
     registerElSystemaInstrument({
@@ -514,6 +509,8 @@ async function startAudio() {
       sharedAnalyser: state.analyser,
 
       play: () => {
+        // ctx が寝ていれば起こしてから走らせる（起きなければ接続層が案内を出す）
+        if (state.audioContext && state.audioContext.state !== "running") state.audioContext.resume().catch(() => {});
         if (!state.isPlaying) toggleTransport();
       },
       stop: () => {
@@ -572,6 +569,13 @@ async function startAudio() {
       },
     });
   }
+
+  if (state.audioContext.state !== "running") {
+    await state.audioContext.resume();
+  }
+
+  elements.audioToggle.textContent = "Audio Ready";
+
 }
 
 async function toggleTransport() {
